@@ -1,0 +1,56 @@
+\documentclass{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage{amsmath}
+\usepackage{bm}
+\usepackage{subcaption}
+\usepackage{biblatex} %Imports biblatex package
+\addbibresource{References.bib} %Import the bibliography file
+
+\usepackage{amssymb}
+\usepackage[skins,theorems]{tcolorbox}
+\tcbset{highlight math style={enhanced,
+  colframe=red,colback=white,arc=0pt,boxrule=1pt}}
+\addtolength\jot{6pt}
+\setlength{\parindent}{0pt}
+\title{DSCI498 Proposal: \\ Synthetic event set of tornado outbreaks with generative AI}
+\author{John Caramichael}
+\date{2026-03-05}
+
+
+
+\begin{document}
+
+\maketitle
+
+Tornadoes are rare events with narrow, spatially sparse impacts. Most structures are never impacted by tornadoes and never will be, and yet they may carry nonzero risk that must be priced. \\
+
+For very large portfolios, the historical record of tornado tracks may converge to a usable signal. With hundreds of thousands of structures distributed across a tornado-prone region, the portfolio as a whole has been struck many times, even though the vast majority of individual structures have never been impacted. The law of large numbers compensates for spatial sparsity, yielding a rough but defensible estimate of the expected loss distribution. This proxy improves as the portfolio grows in size and spatial diversity, and degrades as it shrinks or clusters geographically. Even still, it may be difficult to constrain estimates of tail risk given the short length and spatial sparsity of the historical record. 
+
+\subsection*{Synthetic events}
+
+Catastrophe models address this problem by building synthetic event datasets. They simulate thousands or millions of physically plausible tornado seasons, producing a synthetic catalog of tornado events that follow the broad climatological properties of the observed record or projected climate. From this expanded universe of events, the tail of the loss distribution can be estimated with greater stability than the historical record alone, especially for smaller or geographically clustered portfolios. \\
+
+There are two broad approaches for generating these synthetic catalogs. The first is statistical: fit parametric distributions to observed tornado characteristics (genesis density, path geometry, intensity) and sample from them \cite{fan2019statistical}. It is is computationally cheap and straightforward to calibrate, but produces scenarios without reference to a coherent physical environment, so they lack temporal structure. They also cannot be conditioned on physically possible but unrealized meteorological conditions \cite{malloy2026global}. \\
+
+The second approach is physical: simulating the atmosphere. A numerical weather model generates three-dimensional fields of atmospheric variables, defining the mesoscale environment. These fields can be drawn from the historical record or be plausible, synthetic states. From this environment substrate, a convection-permitting model or parameterization scheme produces thunderstorm activity.   \\
+
+However, most numerical weather prediction (NWP) models are resolved at 1 to 3km, while tornadoes are $O(50\text{m})$, one or two orders of magnitude finer \cite{schenkman2014tornadogenesis}. So in practice, the physical approach  becomes partly statistical: dynamical models supply the storm-scale environment, and statistical or empirical parameterizations infer tornado occurrence and intensity from the resolved fields. For example, \cite{malloy2024stochastic} and \cite{malloy2026global} model tornado risk with regressions of historical tornado occurrence at grid cell resolution against the North American Regional Reanalysis (NARR) and the Global Ensemble Forecast System (GEFS), which are resolved at a roughly 30km. The statistical model is then conditioned on historical or synthetic weather states to produce a synthetic catalog of sampled tornado events. Fully resolving tornadoes dynamically across thousands of simulated seasons remains intractable at this time -- at some resolution, a tornado catastrophe model must leave the world of meteorology and enter the world of statistics.
+
+\subsection*{Generative AI}
+
+An alternative to the statistical approach is generative learning. A generative model, such as a variational autoencoder or diffusion model, can learn the conditional distribution of tornado properties given the resolved storm-scale or mesoscale environment, and then sample from it. Unlike parametric statistical models, which require the modeler to specify covariates, functional forms, and independence assumptions, a generative model learns the joint distribution of tornado attributes directly from data, capturing correlations and nonlinearities that a parameterization may miss. And unlike  statistical approaches, generative learning can capture the spatial structure of tornado outbreaks with computer vision. \\
+
+My proposal is to use a variational autoencoder (VAE) conditioned on NARR fields to model tornado outbreak structure. The encoder ingests daily NARR mesoscale environment fields alongside a variable-length set of tornado track vectors, each defined by start location, end location, width, and intensity. The latent space captures
+  the relationship between the mesoscale environment and the number, placement, and properties of tornado tracks within an outbreak. \\
+  
+  Once trained, the model can
+  be conditioned on any historical or synthetic NARR state to sample plausible outbreak realizations. The project will conclude by mapping the historical record and a synthetic sampled catalog of tornado outbreaks to portfolios of property exposures of varying sizes, analyzing the relationship between portfolio size and concentration and the different risk distributions implied by the historical and synthetic catalogs.
+
+
+
+
+\newpage
+\printbibliography
+
+\end{document}
+
