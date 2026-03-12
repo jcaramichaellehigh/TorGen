@@ -83,6 +83,22 @@ def main() -> int:
         logger.info(f"  Exists probs range: [{exists.min():.3f}, {exists.max():.3f}]")
         logger.info(f"  Predicted tracks (threshold=0.5): {n_predicted}")
 
+        # 6. Visual sanity check
+        logger.info("Step 6: Plotting outbreak comparison...")
+        import os
+        import matplotlib.pyplot as plt
+        from torgen.viz.plots import plot_outbreak_comparison
+
+        # Pick the first .pt file as the "test day"
+        pt_file = os.path.join(tmp, sorted(os.listdir(tmp))[0])
+        plot_path = os.path.join(tmp, "smoke_test_plot.png")
+        fig = plot_outbreak_comparison(
+            model, pt_file, n_samples=5, threshold=0.5, save_path=plot_path,
+        )
+        assert os.path.exists(plot_path), "Plot file was not saved"
+        logger.info(f"  Plot saved to {plot_path}")
+        plt.close(fig)
+
     logger.info("Smoke test PASSED")
     return 0
 
