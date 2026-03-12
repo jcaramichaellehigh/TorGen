@@ -91,7 +91,9 @@ def main() -> int:
 
         # Always test against the 2011-04-27 Super Outbreak sample
         pt_file = os.path.join(tmp, "2011-04-27.pt")
-        plot_path = os.path.join(tmp, "smoke_test_plot.png")
+        out_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "outputs")
+        os.makedirs(out_dir, exist_ok=True)
+        plot_path = os.path.join(out_dir, "smoke_test_plot.png")
         fig = plot_outbreak_comparison(
             model, pt_file, n_samples=5, threshold=0.5, save_path=plot_path,
         )
