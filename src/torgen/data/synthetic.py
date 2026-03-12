@@ -40,3 +40,15 @@ def generate_synthetic_dataset(
             {"wx": wx, "tracks": tracks, "date": date},
             os.path.join(output_dir, f"{date}.pt"),
         )
+
+    # Always include a 2011-04-27 sample (Super Outbreak) with tracks
+    wx = torch.rand(n_channels, grid_h, grid_w, generator=rng)
+    n_tracks = int(torch.randint(3, max_tracks + 1, (1,), generator=rng).item())
+    coords = torch.rand(n_tracks, 4, generator=rng)
+    width = torch.rand(n_tracks, 1, generator=rng)
+    ef = torch.randint(0, 6, (n_tracks, 1), generator=rng).float()
+    tracks = torch.cat([coords, width, ef], dim=1)
+    torch.save(
+        {"wx": wx, "tracks": tracks, "date": "2011-04-27"},
+        os.path.join(output_dir, "2011-04-27.pt"),
+    )

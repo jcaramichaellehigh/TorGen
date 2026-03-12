@@ -89,8 +89,8 @@ def main() -> int:
         import matplotlib.pyplot as plt
         from torgen.viz.plots import plot_outbreak_comparison
 
-        # Pick the first .pt file as the "test day"
-        pt_file = os.path.join(tmp, sorted(os.listdir(tmp))[0])
+        # Always test against the 2011-04-27 Super Outbreak sample
+        pt_file = os.path.join(tmp, "2011-04-27.pt")
         plot_path = os.path.join(tmp, "smoke_test_plot.png")
         fig = plot_outbreak_comparison(
             model, pt_file, n_samples=5, threshold=0.5, save_path=plot_path,
