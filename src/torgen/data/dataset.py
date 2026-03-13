@@ -1,8 +1,18 @@
+import gzip
+import io
 import os
 from typing import Any
 
 import torch
 from torch.utils.data import Dataset
+
+
+def _load_pt(path: str) -> dict[str, Any]:
+    """Load a .pt or .pt.gz file."""
+    if path.endswith(".gz"):
+        with gzip.open(path, "rb") as f:
+            return torch.load(io.BytesIO(f.read()), weights_only=False)
+    return torch.load(path, weights_only=False)
 
 
 SPLIT_YEARS = {
@@ -19,7 +29,10 @@ class TornadoDataset(Dataset):
         self, data_dir: str, preload: bool = False, split: str | None = None,
     ) -> None:
         self.data_dir = data_dir
-        all_files = sorted(f for f in os.listdir(data_dir) if f.endswith(".pt"))
+        all_files = sorted(
+            f for f in os.listdir(data_dir)
+            if f.endswith(".pt") or f.endswith(".pt.gz")
+        )
         if split is not None:
             years = SPLIT_YEARS[split]
             all_files = [f for f in all_files if _parse_year(f) in years]
@@ -28,9 +41,7 @@ class TornadoDataset(Dataset):
         self._cache: list[dict[str, Any] | None] = [None] * len(self.files)
         if preload:
             for i in range(len(self.files)):
-                self._cache[i] = torch.load(
-                    os.path.join(data_dir, self.files[i]), weights_only=False
-                )
+                self._cache[i] = _load_pt(os.path.join(data_dir, self.files[i]))
 
     def __len__(self) -> int:
         return len(self.files)
@@ -38,9 +49,7 @@ class TornadoDataset(Dataset):
     def __getitem__(self, idx: int) -> dict[str, Any]:
         if self._cache[idx] is not None:
             return self._cache[idx]
-        return torch.load(
-            os.path.join(self.data_dir, self.files[idx]), weights_only=False
-        )
+        return _load_pt(os.path.join(self.data_dir, self.files[idx]))
 
 
 def tornado_collate(samples: list[dict[str, Any]]) -> dict[str, Any]:

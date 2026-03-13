@@ -31,7 +31,8 @@ def plot_outbreak_comparison(
     Returns:
         matplotlib Figure.
     """
-    sample = torch.load(pt_path, weights_only=False)
+    from torgen.data.dataset import _load_pt
+    sample = _load_pt(pt_path)
     wx = sample["wx"].unsqueeze(0)  # (1, C, H, W)
     gt_tracks = sample["tracks"]     # (N, 6)
     date = sample.get("date", Path(pt_path).stem)
