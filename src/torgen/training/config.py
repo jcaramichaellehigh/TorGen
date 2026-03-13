@@ -48,4 +48,4 @@ class TrainConfig:
     exists_threshold: float = 0.5
 
     # Tracking
-    use_wandb: bool = True
+    use_wandb: bool = False
