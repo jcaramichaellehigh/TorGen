@@ -171,6 +171,7 @@ class Trainer:
         self.model.train()
         total_loss = 0.0
         n_batches = 0
+        n_total = len(self.train_loader)
         beta = self._get_beta()
 
         for batch in self.train_loader:
@@ -208,6 +209,14 @@ class Trainer:
             self.optimizer.step()
             total_loss += loss.item()
             n_batches += 1
+
+            if n_batches % 50 == 0 or n_batches == n_total:
+                avg = total_loss / n_batches
+                print(
+                    f"  Epoch {self.epoch} | batch {n_batches}/{n_total} | "
+                    f"avg_loss={avg:.4f}",
+                    flush=True,
+                )
 
             # Health check: NaN
             if not torch.isfinite(loss):
