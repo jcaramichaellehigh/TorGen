@@ -88,7 +88,9 @@ class Trainer:
             logger.info("No GPU available — running on CPU")
 
     def _prepare_data(self) -> None:
-        """Copy data from Drive to local SSD if not already present."""
+        """Copy data from Drive to local SSD, decompressing .gz files."""
+        import gzip
+
         src = self.cfg.drive_dir
         dst = self.cfg.local_cache_dir
         if src == dst:
@@ -98,8 +100,20 @@ class Trainer:
             return
         logger.info(f"Copying data from {src} to {dst}...")
         os.makedirs(dst, exist_ok=True)
-        shutil.copytree(src, dst, dirs_exist_ok=True)
-        logger.info("Data copy complete")
+        files = [f for f in sorted(os.listdir(src)) if f.endswith((".pt", ".pt.gz"))]
+        for i, fname in enumerate(files):
+            src_path = os.path.join(src, fname)
+            if fname.endswith(".gz"):
+                dst_path = os.path.join(dst, fname[:-3])  # strip .gz
+                with gzip.open(src_path, "rb") as f_in:
+                    with open(dst_path, "wb") as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+            else:
+                shutil.copy2(src_path, os.path.join(dst, fname))
+            if (i + 1) % 500 == 0:
+                logger.info(f"  Copied {i + 1}/{len(files)} files")
+                sys.stdout.flush()
+        logger.info(f"Data copy complete: {len(files)} files")
 
     def _build_model(self) -> TorGenCVAE:
         return TorGenCVAE(
@@ -126,7 +140,7 @@ class Trainer:
         )
 
     def _build_dataloader(self, split: str) -> DataLoader:
-        ds = TornadoDataset(self.cfg.local_cache_dir, preload=True, split=split)
+        ds = TornadoDataset(self.cfg.local_cache_dir, preload=False, split=split)
         return DataLoader(
             ds,
             batch_size=self.cfg.batch_size,
