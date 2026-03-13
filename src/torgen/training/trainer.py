@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import shutil
+import sys
 import time
 
 import numpy as np
@@ -265,6 +266,8 @@ class Trainer:
             f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | "
             f"beta={beta:.3f} | lr={self.optimizer.param_groups[0]['lr']:.2e}"
         )
+        sys.stdout.flush()
+        sys.stderr.flush()
         if self.wandb_run is not None:
             import wandb
             wandb.log({
@@ -283,6 +286,8 @@ class Trainer:
         )
         n_params = sum(p.numel() for p in self.model.parameters())
         logger.info(f"Model parameters: {n_params:,}")
+        sys.stdout.flush()
+        sys.stderr.flush()
 
         start_epoch = self.epoch
         for epoch in range(start_epoch, self.cfg.max_epochs):
