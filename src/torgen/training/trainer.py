@@ -125,13 +125,7 @@ class Trainer:
         )
 
     def _build_dataloader(self, split: str) -> DataLoader:
-        # If split dirs exist, use them. Otherwise use flat dir for both.
-        split_dir = os.path.join(self.cfg.local_cache_dir, split)
-        if os.path.isdir(split_dir):
-            data_dir = split_dir
-        else:
-            data_dir = self.cfg.local_cache_dir
-        ds = TornadoDataset(data_dir, preload=True)
+        ds = TornadoDataset(self.cfg.local_cache_dir, preload=True, split=split)
         return DataLoader(
             ds,
             batch_size=self.cfg.batch_size,

@@ -5,14 +5,25 @@ import torch
 from torch.utils.data import Dataset
 
 
+SPLIT_YEARS = {
+    "train": range(1996, 2019),
+    "val": range(2019, 2022),
+    "test": range(2022, 2025),
+}
+
+
 class TornadoDataset(Dataset):
     """Dataset of pre-processed .pt tornado day samples."""
 
-    def __init__(self, data_dir: str, preload: bool = False) -> None:
+    def __init__(
+        self, data_dir: str, preload: bool = False, split: str | None = None,
+    ) -> None:
         self.data_dir = data_dir
-        self.files = sorted(
-            [f for f in os.listdir(data_dir) if f.endswith(".pt")]
-        )
+        all_files = sorted(f for f in os.listdir(data_dir) if f.endswith(".pt"))
+        if split is not None:
+            years = SPLIT_YEARS[split]
+            all_files = [f for f in all_files if _parse_year(f) in years]
+        self.files = all_files
         self.preload = preload
         self._cache: list[dict[str, Any] | None] = [None] * len(self.files)
         if preload:
@@ -57,3 +68,8 @@ def tornado_collate(samples: list[dict[str, Any]]) -> dict[str, Any]:
             track_mask[i, :n] = True
 
     return {"wx": wx, "tracks": tracks, "track_mask": track_mask, "dates": dates}
+
+
+def _parse_year(filename: str) -> int:
+    """Extract year from filenames like '2011-04-27.pt'."""
+    return int(filename[:4])
