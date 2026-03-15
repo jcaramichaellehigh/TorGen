@@ -28,6 +28,7 @@ class TorGenCVAE(nn.Module):
         n_heads: int = 4,
         n_ef_classes: int = 6,
         dropout: float = 0.1,
+        memory_dropout: float = 0.0,
     ) -> None:
         super().__init__()
         self.weather_encoder = WeatherEncoder(
@@ -47,7 +48,7 @@ class TorGenCVAE(nn.Module):
             num_queries=num_queries, d_model=d_model,
             d_latent=d_latent, n_layers=n_decoder_layers,
             n_heads=n_heads, n_ef_classes=n_ef_classes,
-            dropout=dropout,
+            dropout=dropout, memory_dropout=memory_dropout,
         )
 
     def forward(

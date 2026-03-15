@@ -126,6 +126,7 @@ class Trainer:
             n_heads=self.cfg.n_heads,
             n_ef_classes=self.cfg.n_ef_classes,
             dropout=self.cfg.dropout,
+            memory_dropout=self.cfg.memory_dropout,
         )
 
     def _build_scheduler(self) -> torch.optim.lr_scheduler.LRScheduler:

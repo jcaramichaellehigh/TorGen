@@ -28,7 +28,7 @@ class TrainConfig:
     num_queries: int = 350
     d_model: int = 256
     d_latent: int = 64
-    n_decoder_layers: int = 4
+    n_decoder_layers: int = 2
     n_posterior_layers: int = 2
     n_heads: int = 4
     in_channels: int = 16
@@ -49,6 +49,7 @@ class TrainConfig:
 
     # Regularization
     dropout: float = 0.1
+    memory_dropout: float = 0.2
 
     # Tracking
     use_wandb: bool = False

@@ -53,10 +53,12 @@ class TrackDecoder(nn.Module):
 
     def __init__(self, num_queries: int = 350, d_model: int = 256,
                  d_latent: int = 64, n_layers: int = 4, n_heads: int = 4,
-                 n_ef_classes: int = 6, dropout: float = 0.1) -> None:
+                 n_ef_classes: int = 6, dropout: float = 0.1,
+                 memory_dropout: float = 0.0) -> None:
         super().__init__()
         self.query_embed = nn.Embedding(num_queries, d_model)
         self.z_proj = nn.Linear(d_latent, d_model)
+        self.memory_drop = nn.Dropout(memory_dropout)
         self.layers = nn.ModuleList(
             [TrackDecoderLayer(d_model, n_heads, dropout=dropout)
              for _ in range(n_layers)]
@@ -78,7 +80,7 @@ class TrackDecoder(nn.Module):
                            width (B,Q,1), ef_logits (B,Q,6)
         """
         B = spatial_tokens.shape[0]
-        memory = spatial_tokens  # (B, S, d_model)
+        memory = self.memory_drop(spatial_tokens)  # (B, S, d_model)
 
         # Inject z into every query embedding (prevents posterior collapse)
         z_broadcast = self.z_proj(z).unsqueeze(1)  # (B, 1, d_model)
