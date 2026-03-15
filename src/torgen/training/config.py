@@ -42,7 +42,7 @@ class TrainConfig:
     lambda_width: float = 2.0
     lambda_ef: float = 2.0
     lambda_exists: float = 2.0
-    lambda_noobj: float = 1.0
+    lambda_noobj: float = 2.0
 
     # Generation
     exists_threshold: float = 0.5
