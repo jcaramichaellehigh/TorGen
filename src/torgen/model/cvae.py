@@ -27,21 +27,27 @@ class TorGenCVAE(nn.Module):
         n_posterior_layers: int = 2,
         n_heads: int = 4,
         n_ef_classes: int = 6,
+        dropout: float = 0.1,
     ) -> None:
         super().__init__()
-        self.weather_encoder = WeatherEncoder(in_channels, d_model)
+        self.weather_encoder = WeatherEncoder(
+            in_channels, d_model, dropout=dropout,
+        )
         self.track_encoder = PosteriorTrackEncoder(
             track_dim=6, d_model=d_model,
             n_layers=n_posterior_layers, n_heads=n_heads,
+            dropout=dropout,
         )
-        self.prior = Prior(d_env=d_model, d_latent=d_latent)
+        self.prior = Prior(d_env=d_model, d_latent=d_latent, dropout=dropout)
         self.posterior = Posterior(
             d_env=d_model, d_track_summary=d_model, d_latent=d_latent,
+            dropout=dropout,
         )
         self.decoder = TrackDecoder(
             num_queries=num_queries, d_model=d_model,
             d_latent=d_latent, n_layers=n_decoder_layers,
             n_heads=n_heads, n_ef_classes=n_ef_classes,
+            dropout=dropout,
         )
 
     def forward(

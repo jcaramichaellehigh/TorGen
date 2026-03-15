@@ -14,6 +14,26 @@ import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 
 
+def _focal_bce(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    gamma: float = 2.0,
+    reduction: str = "sum",
+) -> torch.Tensor:
+    """Focal binary cross-entropy loss.
+
+    Down-weights easy examples by factor (1 - p_t)^gamma, focusing gradient
+    on hard cases near the decision boundary.
+    """
+    bce = F.binary_cross_entropy(pred, target, reduction="none")
+    p_t = pred * target + (1 - pred) * (1 - target)
+    focal_weight = (1 - p_t) ** gamma
+    loss = focal_weight * bce
+    if reduction == "sum":
+        return loss.sum()
+    return loss.mean()
+
+
 class HungarianMatchingLoss(nn.Module):
     """Permutation-invariant loss with Hungarian matching.
 
@@ -27,7 +47,8 @@ class HungarianMatchingLoss(nn.Module):
         lambda_width: float = 2.0,
         lambda_ef: float = 2.0,
         lambda_exists: float = 2.0,
-        lambda_noobj: float = 1.0,
+        lambda_noobj: float = 2.0,
+        focal_gamma: float = 2.0,
         n_ef_classes: int = 6,
         ef_class_weights: torch.Tensor | None = None,
     ) -> None:
@@ -37,6 +58,7 @@ class HungarianMatchingLoss(nn.Module):
         self.lambda_ef = lambda_ef
         self.lambda_exists = lambda_exists
         self.lambda_noobj = lambda_noobj
+        self.focal_gamma = focal_gamma
         self.n_ef_classes = n_ef_classes
         if ef_class_weights is not None:
             self.register_buffer("ef_class_weights", ef_class_weights)
@@ -151,20 +173,20 @@ class HungarianMatchingLoss(nn.Module):
                     weight=self.ef_class_weights,
                     reduction="sum",
                 )
-                total_exists = total_exists + F.binary_cross_entropy(
+                total_exists = total_exists + _focal_bce(
                     pred_exists[pi].squeeze(-1),
                     torch.ones(len(pred_idx), device=device),
-                    reduction="sum",
+                    gamma=self.focal_gamma,
                 )
                 n_matched += len(pred_idx)
 
             # Unmatched slots: push exists toward 0
             if len(unmatched_idx) > 0:
                 ui = torch.tensor(unmatched_idx, device=device)
-                total_noobj = total_noobj + F.binary_cross_entropy(
+                total_noobj = total_noobj + _focal_bce(
                     pred_exists[ui].squeeze(-1),
                     torch.zeros(len(unmatched_idx), device=device),
-                    reduction="sum",
+                    gamma=self.focal_gamma,
                 )
                 n_unmatched += len(unmatched_idx)
 

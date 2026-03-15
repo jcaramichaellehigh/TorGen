@@ -1,10 +1,13 @@
 import gzip
 import io
+import math
 import os
 from typing import Any
 
 import torch
 from torch.utils.data import Dataset
+
+_SQRT2 = math.sqrt(2.0)
 
 
 def _load_pt(path: str) -> dict[str, Any]:
@@ -13,6 +16,42 @@ def _load_pt(path: str) -> dict[str, Any]:
         with gzip.open(path, "rb") as f:
             return torch.load(io.BytesIO(f.read()), weights_only=False)
     return torch.load(path, weights_only=False)
+
+
+def coords_to_bearing_length(tracks: torch.Tensor) -> torch.Tensor:
+    """Convert track coords from (se, sn, ee, en, ...) to (se, sn, bearing_norm, length_norm, ...).
+
+    bearing = atan2(dx, dy)  — compass bearing where 0=north, pi/4=NE
+    bearing_norm = (bearing + pi) / (2*pi)  — maps [-pi, pi] to [0, 1]
+    length_norm = length / sqrt(2)  — max possible length is grid diagonal
+    """
+    if tracks.shape[0] == 0:
+        return tracks
+    out = tracks.clone()
+    dx = tracks[:, 2] - tracks[:, 0]  # ee - se
+    dy = tracks[:, 3] - tracks[:, 1]  # en - sn
+    bearing = torch.atan2(dx, dy)
+    bearing_norm = (bearing + math.pi) / (2 * math.pi)
+    length = torch.sqrt(dx ** 2 + dy ** 2)
+    length_norm = length / _SQRT2
+    out[:, 2] = bearing_norm
+    out[:, 3] = length_norm
+    return out
+
+
+def bearing_length_to_coords(tracks: torch.Tensor) -> torch.Tensor:
+    """Convert track coords from (se, sn, bearing_norm, length_norm, ...) to (se, sn, ee, en, ...).
+
+    Inverse of coords_to_bearing_length.
+    """
+    if tracks.shape[0] == 0:
+        return tracks
+    out = tracks.clone()
+    bearing = tracks[:, 2] * (2 * math.pi) - math.pi
+    length = tracks[:, 3] * _SQRT2
+    out[:, 2] = tracks[:, 0] + length * torch.sin(bearing)  # ee = se + dx
+    out[:, 3] = tracks[:, 1] + length * torch.cos(bearing)  # en = sn + dy
+    return out
 
 
 SPLIT_YEARS = {
@@ -48,8 +87,13 @@ class TornadoDataset(Dataset):
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         if self._cache[idx] is not None:
-            return self._cache[idx]
-        return _load_pt(os.path.join(self.data_dir, self.files[idx]))
+            sample = self._cache[idx]
+        else:
+            sample = _load_pt(os.path.join(self.data_dir, self.files[idx]))
+        return {
+            **sample,
+            "tracks": coords_to_bearing_length(sample["tracks"]),
+        }
 
 
 def tornado_collate(samples: list[dict[str, Any]]) -> dict[str, Any]:

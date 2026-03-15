@@ -125,6 +125,7 @@ class Trainer:
             n_posterior_layers=self.cfg.n_posterior_layers,
             n_heads=self.cfg.n_heads,
             n_ef_classes=self.cfg.n_ef_classes,
+            dropout=self.cfg.dropout,
         )
 
     def _build_scheduler(self) -> torch.optim.lr_scheduler.LRScheduler:

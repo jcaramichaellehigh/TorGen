@@ -19,9 +19,9 @@ class TrainConfig:
     max_epochs: int = 200
     patience: int = 15
     lr: float = 1e-4
-    weight_decay: float = 1e-5
+    weight_decay: float = 1e-3
     warmup_epochs: int = 5
-    kl_anneal_epochs: int = 20
+    kl_anneal_epochs: int = 40
     checkpoint_every: int = 10
 
     # Model architecture
@@ -46,6 +46,9 @@ class TrainConfig:
 
     # Generation
     exists_threshold: float = 0.5
+
+    # Regularization
+    dropout: float = 0.1
 
     # Tracking
     use_wandb: bool = False

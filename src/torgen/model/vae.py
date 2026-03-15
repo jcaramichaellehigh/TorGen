@@ -29,13 +29,16 @@ def kl_divergence(mu_q: torch.Tensor, logvar_q: torch.Tensor,
 class Prior(nn.Module):
     """p(z | weather): environment vector -> mu, logvar."""
 
-    def __init__(self, d_env: int = 256, d_latent: int = 64) -> None:
+    def __init__(self, d_env: int = 256, d_latent: int = 64,
+                 dropout: float = 0.1) -> None:
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(d_env, d_env),
             nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout),
             nn.Linear(d_env, d_env),
             nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout),
         )
         self.mu_head = nn.Linear(d_env, d_latent)
         self.logvar_head = nn.Linear(d_env, d_latent)
@@ -49,14 +52,16 @@ class Posterior(nn.Module):
     """q(z | weather, tracks): cat(env, track_summary) -> mu, logvar."""
 
     def __init__(self, d_env: int = 256, d_track_summary: int = 256,
-                 d_latent: int = 64) -> None:
+                 d_latent: int = 64, dropout: float = 0.1) -> None:
         super().__init__()
         d_in = d_env + d_track_summary
         self.net = nn.Sequential(
             nn.Linear(d_in, d_in),
             nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout),
             nn.Linear(d_in, d_env),
             nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout),
         )
         self.mu_head = nn.Linear(d_env, d_latent)
         self.logvar_head = nn.Linear(d_env, d_latent)

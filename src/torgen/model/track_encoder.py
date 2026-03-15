@@ -18,18 +18,26 @@ import torch.nn as nn
 class PosteriorTrackEncoderLayer(nn.Module):
     """One layer: self-attention among tracks, cross-attention to weather, FFN."""
 
-    def __init__(self, d_model: int, n_heads: int) -> None:
+    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.1) -> None:
         super().__init__()
-        self.self_attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True)
-        self.cross_attn = nn.MultiheadAttention(d_model, n_heads, batch_first=True)
+        self.self_attn = nn.MultiheadAttention(
+            d_model, n_heads, dropout=dropout, batch_first=True,
+        )
+        self.cross_attn = nn.MultiheadAttention(
+            d_model, n_heads, dropout=dropout, batch_first=True,
+        )
         self.ffn = nn.Sequential(
             nn.Linear(d_model, d_model * 2),
             nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout),
             nn.Linear(d_model * 2, d_model),
         )
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.norm3 = nn.LayerNorm(d_model)
+        self.drop1 = nn.Dropout(dropout)
+        self.drop2 = nn.Dropout(dropout)
+        self.drop3 = nn.Dropout(dropout)
 
     def forward(
         self,
@@ -40,16 +48,16 @@ class PosteriorTrackEncoderLayer(nn.Module):
         # Self-attention among track tokens
         h = self.norm1(track_tokens)
         h2, _ = self.self_attn(h, h, h, key_padding_mask=track_key_padding_mask)
-        track_tokens = track_tokens + h2
+        track_tokens = track_tokens + self.drop1(h2)
 
         # Cross-attention to spatial weather tokens
         h = self.norm2(track_tokens)
         h2, _ = self.cross_attn(h, spatial_tokens, spatial_tokens)
-        track_tokens = track_tokens + h2
+        track_tokens = track_tokens + self.drop2(h2)
 
         # FFN
         h = self.norm3(track_tokens)
-        track_tokens = track_tokens + self.ffn(h)
+        track_tokens = track_tokens + self.drop3(self.ffn(h))
         return track_tokens
 
 
@@ -65,11 +73,13 @@ class PosteriorTrackEncoder(nn.Module):
         d_model: int = 256,
         n_layers: int = 2,
         n_heads: int = 4,
+        dropout: float = 0.1,
     ) -> None:
         super().__init__()
         self.embed = nn.Linear(track_dim, d_model)
         self.layers = nn.ModuleList(
-            [PosteriorTrackEncoderLayer(d_model, n_heads) for _ in range(n_layers)]
+            [PosteriorTrackEncoderLayer(d_model, n_heads, dropout=dropout)
+             for _ in range(n_layers)]
         )
         self.null_embedding = nn.Parameter(torch.randn(d_model))
 

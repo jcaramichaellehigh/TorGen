@@ -12,7 +12,8 @@ class WeatherEncoder(nn.Module):
     average pooling.
     """
 
-    def __init__(self, in_channels: int = 16, d_model: int = 256) -> None:
+    def __init__(self, in_channels: int = 16, d_model: int = 256,
+                 dropout: float = 0.1) -> None:
         super().__init__()
         channels = [in_channels, 64, 128, 192, d_model]
         blocks: list[nn.Module] = []
@@ -22,6 +23,7 @@ class WeatherEncoder(nn.Module):
                     nn.Conv2d(channels[i], channels[i + 1], kernel_size=3, stride=2, padding=1),
                     nn.BatchNorm2d(channels[i + 1]),
                     nn.LeakyReLU(inplace=True),
+                    nn.Dropout2d(dropout),
                 )
             )
         self.backbone = nn.Sequential(*blocks)

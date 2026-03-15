@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Optional
 
+from torgen.data.dataset import bearing_length_to_coords, coords_to_bearing_length
 from torgen.model.cvae import TorGenCVAE
 
 
@@ -34,7 +35,7 @@ def plot_outbreak_comparison(
     from torgen.data.dataset import _load_pt
     sample = _load_pt(pt_path)
     wx = sample["wx"].unsqueeze(0)  # (1, C, H, W)
-    gt_tracks = sample["tracks"]     # (N, 6)
+    gt_tracks = coords_to_bearing_length(sample["tracks"])  # (N, 6) in bearing/length space
     date = sample.get("date", Path(pt_path).stem)
 
     device = next(model.parameters()).device
@@ -84,7 +85,8 @@ def _plot_tracks(ax: plt.Axes, tracks: torch.Tensor, title: str = "") -> None:
 
     Args:
         ax: Matplotlib axes.
-        tracks: (N, 6) tensor — columns: se, sn, ee, en, width, ef.
+        tracks: (N, 6) tensor — columns: se, sn, bearing_norm, length_norm, width, ef.
+            Converted back to (se, sn, ee, en) for plotting.
     """
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
@@ -98,11 +100,11 @@ def _plot_tracks(ax: plt.Axes, tracks: torch.Tensor, title: str = "") -> None:
                 fontsize=10, color="gray", transform=ax.transAxes)
         return
 
-    tracks_np = tracks.detach().cpu().numpy()
-    for t in tracks_np:
-        se, sn, ee, en = t[0], t[1], t[2], t[3]
-        ef = int(t[5]) if t.shape[0] > 5 else 0
-        color = _ef_color(ef)
+    coords = bearing_length_to_coords(tracks).detach().cpu().numpy()
+    ef_vals = tracks[:, 5].detach().cpu().numpy() if tracks.shape[1] > 5 else [0] * tracks.shape[0]
+    for i in range(len(coords)):
+        se, sn, ee, en = coords[i, 0], coords[i, 1], coords[i, 2], coords[i, 3]
+        color = _ef_color(int(ef_vals[i]))
         ax.plot([se, ee], [sn, en], color=color, linewidth=1.0, alpha=0.8)
 
 
