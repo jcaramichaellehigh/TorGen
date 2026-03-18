@@ -39,6 +39,8 @@ class Trainer:
         self.model = self._build_model().to(self.device)
         self.loss_fn = HungarianMatchingLoss(
             lambda_coord=config.lambda_coord,
+            lambda_bearing=config.lambda_bearing,
+            lambda_length=config.lambda_length,
             lambda_width=config.lambda_width,
             lambda_ef=config.lambda_ef,
             lambda_exists=config.lambda_exists,
@@ -122,11 +124,9 @@ class Trainer:
             d_latent=self.cfg.d_latent,
             num_queries=self.cfg.num_queries,
             n_decoder_layers=self.cfg.n_decoder_layers,
-            n_posterior_layers=self.cfg.n_posterior_layers,
             n_heads=self.cfg.n_heads,
             n_ef_classes=self.cfg.n_ef_classes,
             dropout=self.cfg.dropout,
-            memory_dropout=self.cfg.memory_dropout,
         )
 
     def _build_scheduler(self) -> torch.optim.lr_scheduler.LRScheduler:

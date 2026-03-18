@@ -28,8 +28,7 @@ class TrainConfig:
     num_queries: int = 350
     d_model: int = 256
     d_latent: int = 64
-    n_decoder_layers: int = 2
-    n_posterior_layers: int = 2
+    n_decoder_layers: int = 4
     n_heads: int = 4
     in_channels: int = 16
     grid_h: int = 270
@@ -39,6 +38,8 @@ class TrainConfig:
 
     # Loss weights
     lambda_coord: float = 5.0
+    lambda_bearing: float = 2.0
+    lambda_length: float = 2.0
     lambda_width: float = 2.0
     lambda_ef: float = 2.0
     lambda_exists: float = 2.0
@@ -49,7 +50,9 @@ class TrainConfig:
 
     # Regularization
     dropout: float = 0.1
-    memory_dropout: float = 0.2
+
+    # Evaluation
+    n_eval_samples: int = 100
 
     # Tracking
     use_wandb: bool = False
