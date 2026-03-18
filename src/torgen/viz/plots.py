@@ -20,22 +20,11 @@ def plot_outbreak_comparison(
 
     Produces a (1 + n_samples) panel figure: ground truth on the left,
     then n_samples independent generations from the same weather.
-
-    Args:
-        model: Trained TorGenCVAE (will be set to eval mode).
-        pt_path: Path to a single .pt file (e.g., 2011-04-27.pt).
-        n_samples: Number of z samples to generate.
-        threshold: Exists probability threshold for predicted tracks.
-        figsize: Size of each subplot panel.
-        save_path: If provided, save figure to this path.
-
-    Returns:
-        matplotlib Figure.
     """
     from torgen.data.dataset import _load_pt
     sample = _load_pt(pt_path)
     wx = sample["wx"].unsqueeze(0)  # (1, C, H, W)
-    gt_tracks = coords_to_bearing_length(sample["tracks"])  # (N, 6) in bearing/length space
+    gt_tracks = coords_to_bearing_length(sample["tracks"])  # (N, 6)
     date = sample.get("date", Path(pt_path).stem)
 
     device = next(model.parameters()).device
@@ -56,15 +45,21 @@ def plot_outbreak_comparison(
         with torch.no_grad():
             out = model.generate(wx)
         preds = out["preds"]
-        exists = preds["exists"][0].squeeze(-1)  # (Q,)
-        coords = preds["coords"][0]               # (Q, 4)
+        exists = preds["exists"][0].squeeze(-1)        # (Q,)
+        coords = preds["coords"][0]                     # (Q, 2)
+        bearing = preds["bearing"][0]                    # (Q, 1)
+        length = preds["length"][0]                      # (Q, 1)
+        width = preds["width"][0]                        # (Q, 1)
         mask = exists > threshold
-        pred_tracks = coords[mask]                 # (K, 4)
 
-        # Build (K, 6) with dummy width/ef for plotting
-        if pred_tracks.shape[0] > 0:
-            tracks_for_plot = torch.zeros(pred_tracks.shape[0], 6)
-            tracks_for_plot[:, :4] = pred_tracks.cpu()
+        if mask.any():
+            # Reassemble (K, 6) in bearing/length format for plotting
+            tracks_for_plot = torch.zeros(mask.sum().item(), 6)
+            tracks_for_plot[:, :2] = coords[mask].cpu()
+            tracks_for_plot[:, 2] = bearing[mask].squeeze(-1).cpu()
+            tracks_for_plot[:, 3] = length[mask].squeeze(-1).cpu()
+            tracks_for_plot[:, 4] = width[mask].squeeze(-1).cpu()
+            # ef defaults to 0
         else:
             tracks_for_plot = torch.zeros(0, 6)
 
@@ -85,7 +80,7 @@ def _plot_tracks(ax: plt.Axes, tracks: torch.Tensor, title: str = "") -> None:
 
     Args:
         ax: Matplotlib axes.
-        tracks: (N, 6) tensor — columns: se, sn, bearing_norm, length_norm, width, ef.
+        tracks: (N, 6) tensor -- columns: se, sn, bearing_norm, length_norm, width, ef.
             Converted back to (se, sn, ee, en) for plotting.
     """
     ax.set_xlim(0, 1)

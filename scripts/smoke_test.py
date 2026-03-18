@@ -42,7 +42,7 @@ def main() -> int:
         logger.info("Step 3: Building model...")
         model = TorGenCVAE(
             in_channels=16, d_model=64, d_latent=16,
-            num_queries=8, n_decoder_layers=2, n_posterior_layers=2,
+            num_queries=8, n_decoder_layers=2,
             n_heads=2, n_ef_classes=6,
         )
         n_params = sum(p.numel() for p in model.parameters())
@@ -68,6 +68,8 @@ def main() -> int:
             logger.info(
                 f"  Step {step + 1}: loss={total.item():.4f} "
                 f"(coord={losses['coord'].item():.3f}, "
+                f"bearing={losses['bearing'].item():.3f}, "
+                f"length={losses['length'].item():.3f}, "
                 f"ef={losses['ef'].item():.3f}, "
                 f"kl={kl.item():.3f})"
             )
