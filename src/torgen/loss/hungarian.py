@@ -162,7 +162,7 @@ class HungarianMatchingLoss(nn.Module):
         width_loss = self.lambda_width * total_width / n_matched
         ef_loss = self.lambda_ef * total_ef / n_matched
         exists_loss = self.lambda_exists * total_exists / n_matched
-        noobj_loss = self.lambda_noobj * total_noobj / n_unmatched
+        noobj_loss = self.lambda_noobj * total_noobj / n_matched
 
         total = (coord_loss + bearing_loss + length_loss + width_loss
                  + ef_loss + exists_loss + noobj_loss)
