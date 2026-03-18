@@ -62,8 +62,12 @@ def run_evaluation(
 
     model.eval()
 
+    # Weather channel indices for environment summary
+    _WX_CHANNELS = {"stp": 8, "scp": 9, "acpcp": 5}
+
     all_rows: list[dict[str, Any]] = []
     gt_rows: list[dict[str, Any]] = []
+    env_rows: list[dict[str, Any]] = []
     gt_counts: list[int] = []
     gen_counts_per_day: list[list[int]] = []
 
@@ -83,7 +87,15 @@ def run_evaluation(
                 "width": t[4].item(), "ef": int(t[5].item()),
             })
 
-        wx = sample["wx"].unsqueeze(0).to(device)  # (1, C, H, W)
+        # Environment summary (p99 of key channels)
+        wx_raw = sample["wx"]  # (C, H, W)
+        env_row: dict[str, Any] = {"date": date}
+        for name, ch in _WX_CHANNELS.items():
+            if ch < wx_raw.shape[0]:
+                env_row[f"p99_{name}"] = float(wx_raw[ch].quantile(0.99))
+        env_rows.append(env_row)
+
+        wx = wx_raw.unsqueeze(0).to(device)  # (1, C, H, W)
 
         day_gen_counts: list[int] = []
 
@@ -135,6 +147,9 @@ def run_evaluation(
 
     gt_df = pd.DataFrame(gt_rows)
     gt_df.to_parquet(os.path.join(output_dir, "gt_tracks.parquet"), index=False)
+
+    env_df = pd.DataFrame(env_rows)
+    env_df.to_parquet(os.path.join(output_dir, "environment.parquet"), index=False)
 
     # Compute metrics
     summary = _compute_metrics(gt_counts, gen_counts_per_day, df)
