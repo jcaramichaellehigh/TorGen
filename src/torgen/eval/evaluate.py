@@ -63,6 +63,7 @@ def run_evaluation(
     model.eval()
 
     all_rows: list[dict[str, Any]] = []
+    gt_rows: list[dict[str, Any]] = []
     gt_counts: list[int] = []
     gen_counts_per_day: list[list[int]] = []
 
@@ -72,6 +73,15 @@ def run_evaluation(
         gt_tracks = sample["tracks"]  # (N, 6) in bearing/length format
         n_gt = gt_tracks.shape[0]
         gt_counts.append(n_gt)
+
+        for i in range(n_gt):
+            t = gt_tracks[i]
+            gt_rows.append({
+                "date": date,
+                "se": t[0].item(), "sn": t[1].item(),
+                "bearing": t[2].item(), "length": t[3].item(),
+                "width": t[4].item(), "ef": int(t[5].item()),
+            })
 
         wx = sample["wx"].unsqueeze(0).to(device)  # (1, C, H, W)
 
@@ -119,9 +129,12 @@ def run_evaluation(
 
         gen_counts_per_day.append(day_gen_counts)
 
-    # Build DataFrame
+    # Build DataFrames
     df = pd.DataFrame(all_rows)
     df.to_parquet(os.path.join(output_dir, "samples.parquet"), index=False)
+
+    gt_df = pd.DataFrame(gt_rows)
+    gt_df.to_parquet(os.path.join(output_dir, "gt_tracks.parquet"), index=False)
 
     # Compute metrics
     summary = _compute_metrics(gt_counts, gen_counts_per_day, df)
