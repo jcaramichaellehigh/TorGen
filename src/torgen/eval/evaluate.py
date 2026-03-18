@@ -66,6 +66,7 @@ def run_evaluation(
     _WX_CHANNELS = {"stp": 8, "scp": 9, "acpcp": 5}
 
     all_rows: list[dict[str, Any]] = []
+    exists_rows: list[dict[str, Any]] = []
     gt_rows: list[dict[str, Any]] = []
     env_rows: list[dict[str, Any]] = []
     gt_counts: list[int] = []
@@ -120,9 +121,19 @@ def run_evaluation(
 
             for i in range(n_chunk):
                 realization_id = chunk_start + i
-                mask = exists[i].squeeze(-1) > threshold  # (Q,)
+                exists_probs = exists[i].squeeze(-1)  # (Q,)
+                mask = exists_probs > threshold  # (Q,)
                 n_pred = mask.sum().item()
                 day_gen_counts.append(n_pred)
+
+                # Log all exists probabilities for diagnostics
+                for q in range(exists_probs.shape[0]):
+                    exists_rows.append({
+                        "date": date,
+                        "realization_id": realization_id,
+                        "slot": q,
+                        "exists_prob": exists_probs[q].item(),
+                    })
 
                 if n_pred > 0:
                     idx = mask.nonzero(as_tuple=True)[0]
@@ -150,6 +161,9 @@ def run_evaluation(
 
     env_df = pd.DataFrame(env_rows)
     env_df.to_parquet(os.path.join(output_dir, "environment.parquet"), index=False)
+
+    exists_df = pd.DataFrame(exists_rows)
+    exists_df.to_parquet(os.path.join(output_dir, "exists_probs.parquet"), index=False)
 
     # Compute metrics
     summary = _compute_metrics(gt_counts, gen_counts_per_day, df)
