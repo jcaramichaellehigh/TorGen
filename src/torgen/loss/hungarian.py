@@ -22,6 +22,12 @@ def _focal_bce(
     return loss.mean()
 
 
+def _circular_l1(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    """L1 loss on circular [0, 1] domain: min(|d|, 1 - |d|)."""
+    diff = (pred - target).abs()
+    return torch.min(diff, 1.0 - diff)
+
+
 class HungarianMatchingLoss(nn.Module):
 
     def __init__(
@@ -36,6 +42,7 @@ class HungarianMatchingLoss(nn.Module):
         focal_gamma: float = 2.0,
         n_ef_classes: int = 6,
         ef_class_weights: torch.Tensor | None = None,
+        ef_weight_power: float = 0.0,
     ) -> None:
         super().__init__()
         self.lambda_coord = lambda_coord
@@ -47,6 +54,7 @@ class HungarianMatchingLoss(nn.Module):
         self.lambda_noobj = lambda_noobj
         self.focal_gamma = focal_gamma
         self.n_ef_classes = n_ef_classes
+        self.ef_weight_power = ef_weight_power
         if ef_class_weights is not None:
             self.register_buffer("ef_class_weights", ef_class_weights)
         else:
@@ -66,7 +74,11 @@ class HungarianMatchingLoss(nn.Module):
         gt_ef = gt_tracks[:, 5].long()
 
         cost_coord = torch.cdist(pred_coords, gt_coords, p=1)
-        cost_bearing = torch.cdist(pred_bearing, gt_bearing, p=1)
+
+        # Circular distance for bearing (values in [0, 1])
+        bearing_diff = (pred_bearing - gt_bearing.T).abs()
+        cost_bearing = torch.min(bearing_diff, 1.0 - bearing_diff)
+
         cost_length = torch.cdist(pred_length, gt_length, p=1)
         cost_width = torch.cdist(pred_width, gt_width, p=1)
 
@@ -101,7 +113,7 @@ class HungarianMatchingLoss(nn.Module):
         total_exists = torch.tensor(0.0, device=device)
         total_noobj = torch.tensor(0.0, device=device)
         n_matched = 0
-        n_unmatched = 0
+        total_Q = 0
 
         for b in range(B):
             n_gt = track_mask[b].sum().item()
@@ -120,6 +132,7 @@ class HungarianMatchingLoss(nn.Module):
             )
 
             Q = pred_exists.shape[0]
+            total_Q += Q
             matched_set = set(pred_idx)
             unmatched_idx = [i for i in range(Q) if i not in matched_set]
 
@@ -129,11 +142,11 @@ class HungarianMatchingLoss(nn.Module):
 
                 total_coord = total_coord + F.l1_loss(
                     pred_coords[pi], gt[:, :2][gi], reduction="sum")
-                total_bearing = total_bearing + F.l1_loss(
-                    pred_bearing[pi], gt[:, 2:3][gi], reduction="sum")
+                total_bearing = total_bearing + _circular_l1(
+                    pred_bearing[pi], gt[:, 2:3][gi]).sum()
                 total_length = total_length + F.l1_loss(
                     pred_length[pi], gt[:, 3:4][gi], reduction="sum")
-                total_width = total_width + F.l1_loss(
+                total_width = total_width + F.smooth_l1_loss(
                     pred_width[pi], gt[:, 4:5][gi], reduction="sum")
                 gt_ef_classes = gt[:, 5][gi].long()
                 total_ef = total_ef + F.cross_entropy(
@@ -151,10 +164,9 @@ class HungarianMatchingLoss(nn.Module):
                     pred_exists[ui].squeeze(-1),
                     torch.zeros(len(unmatched_idx), device=device),
                     gamma=self.focal_gamma)
-                n_unmatched += len(unmatched_idx)
 
         n_matched = max(n_matched, 1)
-        n_unmatched = max(n_unmatched, 1)
+        total_Q = max(total_Q, 1)
 
         coord_loss = self.lambda_coord * total_coord / n_matched
         bearing_loss = self.lambda_bearing * total_bearing / n_matched
@@ -162,7 +174,7 @@ class HungarianMatchingLoss(nn.Module):
         width_loss = self.lambda_width * total_width / n_matched
         ef_loss = self.lambda_ef * total_ef / n_matched
         exists_loss = self.lambda_exists * total_exists / n_matched
-        noobj_loss = self.lambda_noobj * total_noobj / n_matched
+        noobj_loss = self.lambda_noobj * total_noobj / total_Q
 
         total = (coord_loss + bearing_loss + length_loss + width_loss
                  + ef_loss + exists_loss + noobj_loss)

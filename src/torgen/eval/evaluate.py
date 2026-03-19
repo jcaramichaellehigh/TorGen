@@ -68,6 +68,7 @@ def run_evaluation(
     all_rows: list[dict[str, Any]] = []
     gt_rows: list[dict[str, Any]] = []
     env_rows: list[dict[str, Any]] = []
+    exists_rows: list[dict[str, Any]] = []
     gt_counts: list[int] = []
     gen_counts_per_day: list[list[int]] = []
 
@@ -125,6 +126,16 @@ def run_evaluation(
                 n_pred = mask.sum().item()
                 day_gen_counts.append(n_pred)
 
+                # Save ALL slot exists probs
+                probs_np = exists_probs.cpu().numpy()
+                for slot_idx in range(probs_np.shape[0]):
+                    exists_rows.append({
+                        "date": date,
+                        "realization_id": realization_id,
+                        "slot": slot_idx,
+                        "exists_prob": float(probs_np[slot_idx]),
+                    })
+
                 if n_pred > 0:
                     idx = mask.nonzero(as_tuple=True)[0]
                     for j in idx:
@@ -152,6 +163,9 @@ def run_evaluation(
 
     env_df = pd.DataFrame(env_rows)
     env_df.to_parquet(os.path.join(output_dir, "environment.parquet"), index=False)
+
+    exists_df = pd.DataFrame(exists_rows)
+    exists_df.to_parquet(os.path.join(output_dir, "exists_probs.parquet"), index=False)
 
     # Compute metrics
     summary = _compute_metrics(gt_counts, gen_counts_per_day, df)

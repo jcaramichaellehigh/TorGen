@@ -45,6 +45,9 @@ class TrainConfig:
     lambda_exists: float = 2.0
     lambda_noobj: float = 2.0
 
+    # EF class weight power (0 = uniform, 1 = full inverse-frequency)
+    ef_weight_power: float = 0.5
+
     # Generation
     exists_threshold: float = 0.5
 

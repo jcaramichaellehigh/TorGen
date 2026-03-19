@@ -37,6 +37,7 @@ class Trainer:
 
         # Build components
         self.model = self._build_model().to(self.device)
+        ef_weights = self._compute_ef_weights(config.ef_weight_power)
         self.loss_fn = HungarianMatchingLoss(
             lambda_coord=config.lambda_coord,
             lambda_bearing=config.lambda_bearing,
@@ -45,6 +46,8 @@ class Trainer:
             lambda_ef=config.lambda_ef,
             lambda_exists=config.lambda_exists,
             lambda_noobj=config.lambda_noobj,
+            ef_class_weights=ef_weights,
+            ef_weight_power=config.ef_weight_power,
         )
         self.optimizer = AdamW(
             self.model.parameters(),
@@ -128,6 +131,34 @@ class Trainer:
             n_ef_classes=self.cfg.n_ef_classes,
             dropout=self.cfg.dropout,
         )
+
+    def _compute_ef_weights(self, power: float) -> torch.Tensor | None:
+        """Compute inverse-frequency EF class weights from training data.
+
+        Args:
+            power: Exponent on inverse frequencies. 0 = uniform, 1 = full IF,
+                   0.5 = square-root IF (gentler). Values in between interpolate.
+
+        Returns:
+            Tensor of shape (n_ef_classes,), or None if power == 0.
+        """
+        if power == 0.0:
+            return None
+        ds = TornadoDataset(self.cfg.local_cache_dir, preload=False, split="train")
+        counts = torch.zeros(self.cfg.n_ef_classes)
+        for i in range(len(ds)):
+            tracks = ds[i]["tracks"]  # (N, 6)
+            if tracks.shape[0] > 0:
+                ef = tracks[:, 5].long()
+                for c in range(self.cfg.n_ef_classes):
+                    counts[c] += (ef == c).sum()
+        # Avoid division by zero for classes with no samples
+        counts = counts.clamp(min=1)
+        freq = counts / counts.sum()
+        weights = (1.0 / freq) ** power
+        weights = weights / weights.mean()  # normalize so mean weight = 1
+        logger.info(f"EF class weights (power={power}): {weights.tolist()}")
+        return weights
 
     def _build_scheduler(self) -> torch.optim.lr_scheduler.LRScheduler:
         warmup = LinearLR(
