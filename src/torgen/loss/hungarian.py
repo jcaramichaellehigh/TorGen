@@ -37,10 +37,8 @@ class HungarianMatchingLoss(nn.Module):
         lambda_length: float = 2.0,
         lambda_width: float = 2.0,
         lambda_ef: float = 2.0,
-        lambda_exists: float = 2.0,
-        lambda_noobj: float = 2.0,
+        lambda_exists: float = 10.0,
         focal_gamma: float = 2.0,
-        focal_gamma_noobj: float = 2.0,
         n_ef_classes: int = 6,
         ef_class_weights: torch.Tensor | None = None,
         ef_weight_power: float = 0.0,
@@ -52,9 +50,7 @@ class HungarianMatchingLoss(nn.Module):
         self.lambda_width = lambda_width
         self.lambda_ef = lambda_ef
         self.lambda_exists = lambda_exists
-        self.lambda_noobj = lambda_noobj
         self.focal_gamma = focal_gamma
-        self.focal_gamma_noobj = focal_gamma_noobj
         self.n_ef_classes = n_ef_classes
         self.ef_weight_power = ef_weight_power
         if ef_class_weights is not None:
@@ -113,7 +109,6 @@ class HungarianMatchingLoss(nn.Module):
         total_width = torch.tensor(0.0, device=device)
         total_ef = torch.tensor(0.0, device=device)
         total_exists = torch.tensor(0.0, device=device)
-        total_noobj = torch.tensor(0.0, device=device)
         n_matched = 0
         total_Q = 0
 
@@ -135,12 +130,14 @@ class HungarianMatchingLoss(nn.Module):
 
             Q = pred_exists.shape[0]
             total_Q += Q
-            matched_set = set(pred_idx)
-            unmatched_idx = [i for i in range(Q) if i not in matched_set]
 
+            # Unified exists targets: 1 for matched slots, 0 for unmatched
+            exists_targets = torch.zeros(Q, device=device)
             if len(pred_idx) > 0:
                 pi = torch.tensor(pred_idx, device=device)
                 gi = torch.tensor(gt_idx, device=device)
+
+                exists_targets[pi] = 1.0
 
                 total_coord = total_coord + F.l1_loss(
                     pred_coords[pi], gt[:, :2][gi], reduction="sum")
@@ -154,18 +151,11 @@ class HungarianMatchingLoss(nn.Module):
                 total_ef = total_ef + F.cross_entropy(
                     pred_ef_logits[pi], gt_ef_classes,
                     weight=self.ef_class_weights, reduction="sum")
-                total_exists = total_exists + _focal_bce(
-                    pred_exists[pi].squeeze(-1),
-                    torch.ones(len(pred_idx), device=device),
-                    gamma=self.focal_gamma)
                 n_matched += len(pred_idx)
 
-            if len(unmatched_idx) > 0:
-                ui = torch.tensor(unmatched_idx, device=device)
-                total_noobj = total_noobj + _focal_bce(
-                    pred_exists[ui].squeeze(-1),
-                    torch.zeros(len(unmatched_idx), device=device),
-                    gamma=self.focal_gamma_noobj)
+            total_exists = total_exists + _focal_bce(
+                pred_exists.squeeze(-1), exists_targets,
+                gamma=self.focal_gamma)
 
         n_matched = max(n_matched, 1)
         total_Q = max(total_Q, 1)
@@ -175,11 +165,10 @@ class HungarianMatchingLoss(nn.Module):
         length_loss = self.lambda_length * total_length / n_matched
         width_loss = self.lambda_width * total_width / n_matched
         ef_loss = self.lambda_ef * total_ef / n_matched
-        exists_loss = self.lambda_exists * total_exists / n_matched
-        noobj_loss = self.lambda_noobj * total_noobj / total_Q
+        exists_loss = self.lambda_exists * total_exists / total_Q
 
         total = (coord_loss + bearing_loss + length_loss + width_loss
-                 + ef_loss + exists_loss + noobj_loss)
+                 + ef_loss + exists_loss)
 
         return {
             "total": total,
@@ -189,5 +178,4 @@ class HungarianMatchingLoss(nn.Module):
             "width": width_loss,
             "ef": ef_loss,
             "exists": exists_loss,
-            "noobj": noobj_loss,
         }
