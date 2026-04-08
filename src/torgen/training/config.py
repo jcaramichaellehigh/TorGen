@@ -44,12 +44,10 @@ class TrainConfig:
     lambda_length: float = 2.0
     lambda_width: float = 2.0
     lambda_ef: float = 2.0
-    lambda_exists: float = 2.0
-    lambda_noobj: float = 2.0
+    lambda_exists: float = 10.0
 
     # Focal loss
-    focal_gamma: float = 2.0       # focal gamma for matched exists
-    focal_gamma_noobj: float = 2.0  # focal gamma for unmatched queries
+    focal_gamma: float = 2.0
 
     # EF class weight power (0 = uniform, 1 = full inverse-frequency)
     ef_weight_power: float = 0.5
