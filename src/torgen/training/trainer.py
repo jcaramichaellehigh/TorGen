@@ -45,9 +45,7 @@ class Trainer:
             lambda_width=config.lambda_width,
             lambda_ef=config.lambda_ef,
             lambda_exists=config.lambda_exists,
-            lambda_noobj=config.lambda_noobj,
             focal_gamma=config.focal_gamma,
-            focal_gamma_noobj=config.focal_gamma_noobj,
             ef_class_weights=ef_weights,
             ef_weight_power=config.ef_weight_power,
         ).to(self.device)
