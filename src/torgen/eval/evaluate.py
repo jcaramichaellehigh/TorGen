@@ -176,7 +176,7 @@ def run_evaluation(
 
     # Plots (optional — skip if matplotlib/cartopy not available)
     try:
-        _save_plots(gt_counts, gen_counts_per_day, df, output_dir)
+        _save_plots(gt_counts, gen_counts_per_day, df, gt_df, output_dir)
     except ImportError:
         pass
 
@@ -249,6 +249,7 @@ def _save_plots(
     gt_counts: list[int],
     gen_counts_per_day: list[list[int]],
     df: pd.DataFrame,
+    gt_df: pd.DataFrame,
     output_dir: str,
 ) -> None:
     """Save diagnostic plots."""
@@ -271,15 +272,20 @@ def _save_plots(
     fig.savefig(os.path.join(output_dir, "count_distribution.png"), dpi=150)
     plt.close(fig)
 
-    # 2. Per-day count comparison
+    # 2. Per-day count comparison (log10 scale)
     mean_gen = [np.mean(c) for c in gen_counts_per_day]
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.scatter(gt_counts, mean_gen, alpha=0.6, s=20)
-    lim = max(max(gt_counts, default=1), max(mean_gen, default=1)) * 1.1
-    ax.plot([0, lim], [0, lim], "k--", alpha=0.3)
-    ax.set_xlabel("GT Count")
-    ax.set_ylabel("Mean Generated Count")
-    ax.set_title("Per-Day Count: GT vs Generated")
+    # Offset by 1 for log scale (0 counts -> 1 on plot)
+    gt_log = np.array(gt_counts) + 1
+    gen_log = np.array(mean_gen) + 1
+    ax.scatter(gt_log, gen_log, alpha=0.6, s=20)
+    lim = max(gt_log.max(), gen_log.max()) * 1.3
+    ax.plot([1, lim], [1, lim], "k--", alpha=0.3)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("GT Count + 1")
+    ax.set_ylabel("Mean Generated Count + 1")
+    ax.set_title("Per-Day Count: GT vs Generated (log10)")
     fig.tight_layout()
     fig.savefig(os.path.join(output_dir, "count_scatter.png"), dpi=150)
     plt.close(fig)
@@ -301,3 +307,37 @@ def _save_plots(
         fig.tight_layout()
         fig.savefig(os.path.join(output_dir, "genesis_density.png"), dpi=150)
         plt.close(fig)
+
+    # 4. EF distribution comparison
+    n_ef = 6
+    ef_labels = [f"EF{i}" for i in range(n_ef)]
+    gt_ef_counts = np.zeros(n_ef)
+    gen_ef_counts = np.zeros(n_ef)
+    if len(gt_df) > 0 and "ef" in gt_df.columns:
+        for ef, cnt in gt_df["ef"].value_counts().items():
+            if 0 <= ef < n_ef:
+                gt_ef_counts[ef] = cnt
+    if len(df) > 0 and "ef" in df.columns:
+        for ef, cnt in df["ef"].value_counts().items():
+            if 0 <= ef < n_ef:
+                gen_ef_counts[ef] = cnt
+    # Normalize to proportions
+    gt_total = gt_ef_counts.sum()
+    gen_total = gen_ef_counts.sum()
+    gt_ef_prop = gt_ef_counts / gt_total if gt_total > 0 else gt_ef_counts
+    gen_ef_prop = gen_ef_counts / gen_total if gen_total > 0 else gen_ef_counts
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    x = np.arange(n_ef)
+    w = 0.35
+    ax.bar(x - w / 2, gt_ef_prop, w, label="Ground Truth", alpha=0.8)
+    ax.bar(x + w / 2, gen_ef_prop, w, label="Generated", alpha=0.8)
+    ax.set_xticks(x)
+    ax.set_xticklabels(ef_labels)
+    ax.set_xlabel("EF Rating")
+    ax.set_ylabel("Proportion")
+    ax.set_title("EF Distribution: GT vs Generated")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, "ef_distribution.png"), dpi=150)
+    plt.close(fig)
