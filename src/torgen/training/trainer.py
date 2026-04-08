@@ -46,9 +46,11 @@ class Trainer:
             lambda_ef=config.lambda_ef,
             lambda_exists=config.lambda_exists,
             lambda_noobj=config.lambda_noobj,
+            focal_gamma=config.focal_gamma,
+            focal_gamma_noobj=config.focal_gamma_noobj,
             ef_class_weights=ef_weights,
             ef_weight_power=config.ef_weight_power,
-        )
+        ).to(self.device)
         self.optimizer = AdamW(
             self.model.parameters(),
             lr=config.lr,
@@ -124,7 +126,9 @@ class Trainer:
         return TorGenCVAE(
             in_channels=self.cfg.in_channels,
             d_model=self.cfg.d_model,
-            d_latent=self.cfg.d_latent,
+            d_z_channel=self.cfg.d_z_channel,
+            latent_spatial_size=self.cfg.latent_spatial_size,
+            d_compress=self.cfg.d_compress,
             num_queries=self.cfg.num_queries,
             n_decoder_layers=self.cfg.n_decoder_layers,
             n_heads=self.cfg.n_heads,

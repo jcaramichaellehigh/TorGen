@@ -40,6 +40,7 @@ class HungarianMatchingLoss(nn.Module):
         lambda_exists: float = 2.0,
         lambda_noobj: float = 2.0,
         focal_gamma: float = 2.0,
+        focal_gamma_noobj: float = 2.0,
         n_ef_classes: int = 6,
         ef_class_weights: torch.Tensor | None = None,
         ef_weight_power: float = 0.0,
@@ -53,6 +54,7 @@ class HungarianMatchingLoss(nn.Module):
         self.lambda_exists = lambda_exists
         self.lambda_noobj = lambda_noobj
         self.focal_gamma = focal_gamma
+        self.focal_gamma_noobj = focal_gamma_noobj
         self.n_ef_classes = n_ef_classes
         self.ef_weight_power = ef_weight_power
         if ef_class_weights is not None:
@@ -163,7 +165,7 @@ class HungarianMatchingLoss(nn.Module):
                 total_noobj = total_noobj + _focal_bce(
                     pred_exists[ui].squeeze(-1),
                     torch.zeros(len(unmatched_idx), device=device),
-                    gamma=self.focal_gamma)
+                    gamma=self.focal_gamma_noobj)
 
         n_matched = max(n_matched, 1)
         total_Q = max(total_Q, 1)

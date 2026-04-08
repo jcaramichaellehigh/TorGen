@@ -1,8 +1,7 @@
 # src/torgen/model/vae.py
 """VAE latent space: prior, posterior, reparameterization, and KL divergence.
 
-The latent variable z captures stochastic aspects of tornado occurrence
-that are not fully determined by the environment alone.
+v3: Spatial latent z — prior and posterior operate on compressed 4x4 feature maps.
 """
 import torch
 import torch.nn as nn
@@ -26,47 +25,45 @@ def kl_divergence(mu_q: torch.Tensor, logvar_q: torch.Tensor,
     return kl.sum(dim=-1).mean()
 
 
-class Prior(nn.Module):
-    """p(z | weather): environment vector -> mu, logvar."""
+class SpatialPrior(nn.Module):
+    """p(z | weather): compressed spatial map -> spatial mu, logvar."""
 
-    def __init__(self, d_env: int = 256, d_latent: int = 64,
+    def __init__(self, d_compress: int = 64, d_z: int = 16,
                  dropout: float = 0.1) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(d_env, d_env),
-            nn.LeakyReLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(d_env, d_env),
+            nn.Conv2d(d_compress, d_compress, 1),
             nn.LeakyReLU(inplace=True),
             nn.Dropout(dropout),
         )
-        self.mu_head = nn.Linear(d_env, d_latent)
-        self.logvar_head = nn.Linear(d_env, d_latent)
+        self.mu_head = nn.Conv2d(d_compress, d_z, 1)
+        self.logvar_head = nn.Conv2d(d_compress, d_z, 1)
 
-    def forward(self, env: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        h = self.net(env)
+    def forward(self, compressed: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        h = self.net(compressed)
         return self.mu_head(h), self.logvar_head(h)
 
 
-class Posterior(nn.Module):
-    """q(z | weather, tracks): cat(env, track_summary) -> mu, logvar."""
+class SpatialPosterior(nn.Module):
+    """q(z | weather, tracks): FiLM-conditioned compressed map -> spatial mu, logvar."""
 
-    def __init__(self, d_env: int = 256, d_track_summary: int = 256,
-                 d_latent: int = 64, dropout: float = 0.1) -> None:
+    def __init__(self, d_compress: int = 64, d_model: int = 256,
+                 d_z: int = 16, dropout: float = 0.1) -> None:
         super().__init__()
-        d_in = d_env + d_track_summary
+        self.scale_proj = nn.Linear(d_model, d_compress)
+        self.shift_proj = nn.Linear(d_model, d_compress)
         self.net = nn.Sequential(
-            nn.Linear(d_in, d_in),
-            nn.LeakyReLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(d_in, d_env),
+            nn.Conv2d(d_compress, d_compress, 1),
             nn.LeakyReLU(inplace=True),
             nn.Dropout(dropout),
         )
-        self.mu_head = nn.Linear(d_env, d_latent)
-        self.logvar_head = nn.Linear(d_env, d_latent)
+        self.mu_head = nn.Conv2d(d_compress, d_z, 1)
+        self.logvar_head = nn.Conv2d(d_compress, d_z, 1)
 
-    def forward(self, env: torch.Tensor,
+    def forward(self, compressed: torch.Tensor,
                 track_summary: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        h = self.net(torch.cat([env, track_summary], dim=-1))
+        scale = self.scale_proj(track_summary)[:, :, None, None]
+        shift = self.shift_proj(track_summary)[:, :, None, None]
+        modulated = compressed * (1 + scale) + shift
+        h = self.net(modulated)
         return self.mu_head(h), self.logvar_head(h)

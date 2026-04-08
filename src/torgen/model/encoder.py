@@ -74,3 +74,26 @@ class WeatherEncoder(nn.Module):
         spatial_map = feat + pe
         env_vector = feat.mean(dim=(2, 3))  # global avg pool (before PE)
         return spatial_map, env_vector
+
+
+class SpatialCompressor(nn.Module):
+    """Compress spatial feature map (B, d_model, 17, 17) -> (B, d_compress, 4, 4)."""
+
+    def __init__(self, d_model: int = 256, d_compress: int = 64,
+                 dropout: float = 0.1) -> None:
+        super().__init__()
+        d_mid = (d_model + d_compress) // 2
+        self.net = nn.Sequential(
+            nn.Conv2d(d_model, d_mid, 3, stride=2, padding=1),
+            nn.BatchNorm2d(d_mid),
+            nn.LeakyReLU(inplace=True),
+            nn.Dropout2d(dropout),
+            nn.Conv2d(d_mid, d_compress, 3, stride=2, padding=1),
+            nn.BatchNorm2d(d_compress),
+            nn.LeakyReLU(inplace=True),
+            nn.Dropout2d(dropout),
+            nn.AdaptiveAvgPool2d(4),
+        )
+
+    def forward(self, spatial_map: torch.Tensor) -> torch.Tensor:
+        return self.net(spatial_map)

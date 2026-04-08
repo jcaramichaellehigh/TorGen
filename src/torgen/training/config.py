@@ -27,7 +27,9 @@ class TrainConfig:
     # Model architecture
     num_queries: int = 350
     d_model: int = 256
-    d_latent: int = 64
+    d_z_channel: int = 16          # channels per spatial position in latent
+    latent_spatial_size: int = 4   # spatial resolution of latent (4x4)
+    d_compress: int = 64           # intermediate compressor channels
     n_decoder_layers: int = 4
     n_heads: int = 4
     in_channels: int = 16
@@ -44,6 +46,10 @@ class TrainConfig:
     lambda_ef: float = 2.0
     lambda_exists: float = 2.0
     lambda_noobj: float = 2.0
+
+    # Focal loss
+    focal_gamma: float = 2.0       # focal gamma for matched exists
+    focal_gamma_noobj: float = 2.0  # focal gamma for unmatched queries
 
     # EF class weight power (0 = uniform, 1 = full inverse-frequency)
     ef_weight_power: float = 0.5

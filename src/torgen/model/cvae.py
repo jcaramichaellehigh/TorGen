@@ -1,25 +1,28 @@
 # src/torgen/model/cvae.py
-"""Full DETR-CVAE for tornado outbreak generation (v2: z-only decoder)."""
+"""Full DETR-CVAE for tornado outbreak generation (v3: spatial latent z)."""
 import torch
 import torch.nn as nn
 
-from torgen.model.encoder import WeatherEncoder
+from torgen.model.encoder import WeatherEncoder, SpatialCompressor
 from torgen.model.decoder import TrackDecoder
 from torgen.model.track_encoder import PosteriorTrackEncoder
-from torgen.model.vae import Prior, Posterior, reparameterize
+from torgen.model.vae import SpatialPrior, SpatialPosterior, reparameterize
 
 
 class TorGenCVAE(nn.Module):
     """Full DETR-CVAE for tornado outbreak generation.
 
-    v2: decoder sees only z, no direct weather access.
+    v3: spatial latent z — compressed weather map feeds prior/posterior,
+    decoder cross-attends to flattened z tokens.
     """
 
     def __init__(
         self,
         in_channels: int = 16,
         d_model: int = 256,
-        d_latent: int = 64,
+        d_z_channel: int = 16,
+        latent_spatial_size: int = 4,
+        d_compress: int = 64,
         num_queries: int = 350,
         n_decoder_layers: int = 4,
         n_heads: int = 4,
@@ -30,38 +33,45 @@ class TorGenCVAE(nn.Module):
         self.weather_encoder = WeatherEncoder(
             in_channels, d_model, dropout=dropout,
         )
+        self.spatial_compressor = SpatialCompressor(
+            d_model=d_model, d_compress=d_compress, dropout=dropout,
+        )
         self.track_encoder = PosteriorTrackEncoder(
             track_dim=6, d_model=d_model,
         )
-        self.prior = Prior(d_env=d_model, d_latent=d_latent, dropout=dropout)
-        self.posterior = Posterior(
-            d_env=d_model, d_track_summary=d_model, d_latent=d_latent,
-            dropout=dropout,
+        self.prior = SpatialPrior(
+            d_compress=d_compress, d_z=d_z_channel, dropout=dropout,
+        )
+        self.posterior = SpatialPosterior(
+            d_compress=d_compress, d_model=d_model,
+            d_z=d_z_channel, dropout=dropout,
         )
         self.decoder = TrackDecoder(
             num_queries=num_queries, d_model=d_model,
-            d_latent=d_latent, n_layers=n_decoder_layers,
-            n_heads=n_heads, n_ef_classes=n_ef_classes,
-            dropout=dropout,
+            d_z=d_z_channel, latent_spatial_size=latent_spatial_size,
+            n_layers=n_decoder_layers, n_heads=n_heads,
+            n_ef_classes=n_ef_classes, dropout=dropout,
         )
 
     def forward(self, wx, tracks, track_mask):
-        _, env_vector = self.weather_encoder(wx)
+        spatial_map, _ = self.weather_encoder(wx)
+        compressed = self.spatial_compressor(spatial_map)
         track_summary = self.track_encoder(tracks, track_mask)
-        mu_q, logvar_q = self.posterior(env_vector, track_summary)
-        mu_p, logvar_p = self.prior(env_vector)
-        z = reparameterize(mu_q, logvar_q)
+        mu_q, logvar_q = self.posterior(compressed, track_summary)
+        mu_p, logvar_p = self.prior(compressed)
+        z = reparameterize(mu_q, logvar_q)  # (B, d_z, 4, 4)
         preds = self.decoder(z)
         return {
             "preds": preds,
-            "mu_q": mu_q, "logvar_q": logvar_q,
-            "mu_p": mu_p, "logvar_p": logvar_p,
+            "mu_q": mu_q.flatten(1), "logvar_q": logvar_q.flatten(1),
+            "mu_p": mu_p.flatten(1), "logvar_p": logvar_p.flatten(1),
         }
 
     @torch.no_grad()
     def generate(self, wx):
-        _, env_vector = self.weather_encoder(wx)
-        mu_p, logvar_p = self.prior(env_vector)
-        z = reparameterize(mu_p, logvar_p)
+        spatial_map, _ = self.weather_encoder(wx)
+        compressed = self.spatial_compressor(spatial_map)
+        mu_p, logvar_p = self.prior(compressed)
+        z = reparameterize(mu_p, logvar_p)  # (B, d_z, 4, 4)
         preds = self.decoder(z)
         return {"preds": preds}
