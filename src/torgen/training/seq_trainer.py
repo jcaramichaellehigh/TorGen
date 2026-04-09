@@ -357,6 +357,19 @@ class SeqTrainer:
         self._save_checkpoint("latest")
         logger.info("Training complete")
 
+        # Run evaluation on test set
+        from torgen.eval.evaluate import run_seq_evaluation
+        eval_dir = os.path.join(self.cfg.checkpoint_dir, "eval")
+        results = run_seq_evaluation(
+            model=self.model,
+            cfg=self.cfg,
+            data_dir=self.cfg.local_cache_dir,
+            output_dir=eval_dir,
+            split="test",
+            device=self.device,
+        )
+        logger.info(f"Evaluation results: {results}")
+
         if self.wandb_run is not None:
             import wandb
             wandb.finish()

@@ -16,6 +16,7 @@ from scipy import stats
 
 from torgen.data.dataset import TornadoDataset
 from torgen.training.config import TrainConfig
+from torgen.training.seq_config import SeqTrainConfig
 
 
 def run_evaluation(
@@ -175,6 +176,138 @@ def run_evaluation(
         json.dump(summary, f, indent=2)
 
     # Plots (optional — skip if matplotlib/cartopy not available)
+    try:
+        _save_plots(gt_counts, gen_counts_per_day, df, gt_df, output_dir)
+    except ImportError:
+        pass
+
+    return summary
+
+
+def run_seq_evaluation(
+    model: torch.nn.Module,
+    cfg: SeqTrainConfig,
+    data_dir: str,
+    output_dir: str,
+    split: str | None = "test",
+    device: torch.device | None = None,
+    chunk_size: int = 25,
+) -> dict[str, Any]:
+    """Run evaluation for the sequence decoder CVAE.
+
+    Same pipeline as run_evaluation but uses gen_mask from the
+    autoregressive decoder instead of exists > threshold.
+    """
+    if device is None:
+        device = next(model.parameters()).device
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    ds = TornadoDataset(data_dir, preload=False, split=split)
+    if len(ds) == 0:
+        summary = {"count_mae": 0.0, "count_ks_pvalue": 1.0, "n_days": 0}
+        with open(os.path.join(output_dir, "summary.json"), "w") as f:
+            json.dump(summary, f, indent=2)
+        pd.DataFrame().to_parquet(os.path.join(output_dir, "samples.parquet"))
+        return summary
+
+    n_samples = cfg.n_eval_samples
+    stop_threshold = cfg.stop_threshold
+
+    model.eval()
+
+    _WX_CHANNELS = {"stp": 8, "scp": 9, "acpcp": 5}
+
+    all_rows: list[dict[str, Any]] = []
+    gt_rows: list[dict[str, Any]] = []
+    env_rows: list[dict[str, Any]] = []
+    gt_counts: list[int] = []
+    gen_counts_per_day: list[list[int]] = []
+
+    for day_idx in range(len(ds)):
+        sample = ds[day_idx]
+        date = sample.get("date", f"day_{day_idx}")
+        gt_tracks = sample["tracks"]
+        n_gt = gt_tracks.shape[0]
+        gt_counts.append(n_gt)
+
+        for i in range(n_gt):
+            t = gt_tracks[i]
+            gt_rows.append({
+                "date": date,
+                "se": t[0].item(), "sn": t[1].item(),
+                "bearing": t[2].item(), "length": t[3].item(),
+                "width": t[4].item(), "ef": int(t[5].item()),
+            })
+
+        wx_raw = sample["wx"]
+        env_row: dict[str, Any] = {"date": date}
+        for name, ch in _WX_CHANNELS.items():
+            if ch < wx_raw.shape[0]:
+                env_row[f"p99_{name}"] = float(wx_raw[ch].quantile(0.99))
+        env_rows.append(env_row)
+
+        wx = wx_raw.unsqueeze(0).to(device)
+
+        day_gen_counts: list[int] = []
+
+        for chunk_start in range(0, n_samples, chunk_size):
+            chunk_end = min(chunk_start + chunk_size, n_samples)
+            n_chunk = chunk_end - chunk_start
+
+            wx_batch = wx.expand(n_chunk, -1, -1, -1)
+
+            with torch.no_grad():
+                out = model.generate(wx_batch, stop_threshold=stop_threshold)
+
+            preds = out["preds"]
+            gen_mask = preds["gen_mask"]       # (n_chunk, max_seq_len)
+            coords = preds["coords"]           # (n_chunk, max_seq_len, 2)
+            bearing = preds["bearing"]         # (n_chunk, max_seq_len, 1)
+            length = preds["length"]           # (n_chunk, max_seq_len, 1)
+            width = preds["width"]             # (n_chunk, max_seq_len, 1)
+            ef_logits = preds["ef_logits"]     # (n_chunk, max_seq_len, n_ef)
+
+            ef_class = ef_logits.argmax(dim=-1)  # (n_chunk, max_seq_len)
+
+            for i in range(n_chunk):
+                realization_id = chunk_start + i
+                mask = gen_mask[i]  # (max_seq_len,)
+                n_pred = mask.sum().item()
+                day_gen_counts.append(n_pred)
+
+                if n_pred > 0:
+                    idx = mask.nonzero(as_tuple=True)[0]
+                    for j in idx:
+                        j = j.item()
+                        all_rows.append({
+                            "date": date,
+                            "realization_id": realization_id,
+                            "se": coords[i, j, 0].item(),
+                            "sn": coords[i, j, 1].item(),
+                            "bearing": bearing[i, j, 0].item(),
+                            "length": length[i, j, 0].item(),
+                            "width": width[i, j, 0].item(),
+                            "ef": ef_class[i, j].item(),
+                        })
+
+        gen_counts_per_day.append(day_gen_counts)
+
+    df = pd.DataFrame(all_rows)
+    df.to_parquet(os.path.join(output_dir, "samples.parquet"), index=False)
+
+    gt_df = pd.DataFrame(gt_rows)
+    gt_df.to_parquet(os.path.join(output_dir, "gt_tracks.parquet"), index=False)
+
+    env_df = pd.DataFrame(env_rows)
+    env_df.to_parquet(os.path.join(output_dir, "environment.parquet"), index=False)
+
+    summary = _compute_metrics(gt_counts, gen_counts_per_day, df)
+    summary["n_days"] = len(ds)
+
+    with open(os.path.join(output_dir, "summary.json"), "w") as f:
+        json.dump(summary, f, indent=2)
+
     try:
         _save_plots(gt_counts, gen_counts_per_day, df, gt_df, output_dir)
     except ImportError:
