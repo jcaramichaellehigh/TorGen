@@ -31,7 +31,6 @@ class SequenceLoss(nn.Module):
         lambda_stop: float = 1.0,
         n_ef_classes: int = 6,
         ef_class_weights: torch.Tensor | None = None,
-        ef_weight_power: float = 0.0,
     ) -> None:
         super().__init__()
         self.lambda_coord = lambda_coord
@@ -41,7 +40,6 @@ class SequenceLoss(nn.Module):
         self.lambda_ef = lambda_ef
         self.lambda_stop = lambda_stop
         self.n_ef_classes = n_ef_classes
-        self.ef_weight_power = ef_weight_power
         if ef_class_weights is not None:
             self.register_buffer("ef_class_weights", ef_class_weights)
         else:

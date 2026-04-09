@@ -43,7 +43,6 @@ class SeqTrainer:
             lambda_ef=config.lambda_ef,
             lambda_stop=config.lambda_stop,
             ef_class_weights=ef_weights,
-            ef_weight_power=config.ef_weight_power,
         ).to(self.device)
         self.optimizer = AdamW(
             self.model.parameters(),
