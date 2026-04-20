@@ -54,15 +54,21 @@ class SeqTrainer:
         self.epoch = 0
         self.best_val_loss = float("inf")
         self.patience_counter = 0
-        self.train_losses: list[float] = []
-        self.val_losses: list[float] = []
+        self.loss_history: dict[str, list[float]] = {
+            "train_total": [], "val_total": [],
+            "train_kl": [], "val_kl": [],
+            "train_recon": [], "val_recon": [],
+            "train_coord": [], "val_coord": [],
+            "train_bearing": [], "val_bearing": [],
+            "train_length": [], "val_length": [],
+            "train_width": [], "val_width": [],
+            "train_ef": [], "val_ef": [],
+            "train_stop": [], "val_stop": [],
+            "beta": [], "lr": [],
+        }
 
         self.train_loader = self._build_dataloader("train")
         self.val_loader = self._build_dataloader("val")
-
-        self.wandb_run = None
-        if config.use_wandb:
-            self._init_wandb()
 
         self._load_checkpoint()
 
@@ -165,26 +171,18 @@ class SeqTrainer:
             drop_last=(split == "train"),
         )
 
-    def _init_wandb(self) -> None:
-        try:
-            import wandb
-            self.wandb_run = wandb.init(
-                project="torgen-seq",
-                config=vars(self.cfg),
-                resume="allow",
-            )
-        except Exception as e:
-            logger.warning(f"wandb init failed ({e}), continuing without tracking")
-            self.wandb_run = None
-
     def _get_beta(self) -> float:
         if self.cfg.kl_anneal_epochs == 0:
             return 1.0
         return min(1.0, self.epoch / self.cfg.kl_anneal_epochs)
 
-    def _train_one_epoch(self) -> float:
+    def _train_one_epoch(self) -> dict[str, float]:
         self.model.train()
-        total_loss = 0.0
+        accum = {
+            "total": 0.0, "kl": 0.0, "recon": 0.0,
+            "coord": 0.0, "bearing": 0.0, "length": 0.0,
+            "width": 0.0, "ef": 0.0, "stop": 0.0,
+        }
         n_batches = 0
         n_total = len(self.train_loader)
         beta = self._get_beta()
@@ -220,11 +218,20 @@ class SeqTrainer:
                 logger.warning(f"Gradient norm {grad_norm:.1f} > 10")
 
             self.optimizer.step()
-            total_loss += loss.item()
+
+            accum["total"] += loss.item()
+            accum["kl"] += kl.item()
+            accum["recon"] += losses["total"].item()
+            accum["coord"] += losses["coord"].item()
+            accum["bearing"] += losses["bearing"].item()
+            accum["length"] += losses["length"].item()
+            accum["width"] += losses["width"].item()
+            accum["ef"] += losses["ef"].item()
+            accum["stop"] += losses["stop"].item()
             n_batches += 1
 
             if n_batches % 50 == 0 or n_batches == n_total:
-                avg = total_loss / n_batches
+                avg = accum["total"] / n_batches
                 print(
                     f"  Epoch {self.epoch} | batch {n_batches}/{n_total} | "
                     f"avg_loss={avg:.4f}",
@@ -234,12 +241,17 @@ class SeqTrainer:
             if not torch.isfinite(loss):
                 logger.warning("Loss is NaN/Inf — check learning rate")
 
-        return total_loss / max(n_batches, 1)
+        n = max(n_batches, 1)
+        return {k: v / n for k, v in accum.items()}
 
     @torch.no_grad()
-    def _validate(self) -> float:
+    def _validate(self) -> dict[str, float]:
         self.model.eval()
-        total_loss = 0.0
+        accum = {
+            "total": 0.0, "kl": 0.0, "recon": 0.0,
+            "coord": 0.0, "bearing": 0.0, "length": 0.0,
+            "width": 0.0, "ef": 0.0, "stop": 0.0,
+        }
         n_batches = 0
         beta = self._get_beta()
 
@@ -255,10 +267,20 @@ class SeqTrainer:
                 out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"]
             )
             loss = losses["total"] + beta * kl
-            total_loss += loss.item()
+
+            accum["total"] += loss.item()
+            accum["kl"] += kl.item()
+            accum["recon"] += losses["total"].item()
+            accum["coord"] += losses["coord"].item()
+            accum["bearing"] += losses["bearing"].item()
+            accum["length"] += losses["length"].item()
+            accum["width"] += losses["width"].item()
+            accum["ef"] += losses["ef"].item()
+            accum["stop"] += losses["stop"].item()
             n_batches += 1
 
-        return total_loss / max(n_batches, 1)
+        n = max(n_batches, 1)
+        return {k: v / n for k, v in accum.items()}
 
     def _save_checkpoint(self, tag: str = "latest") -> None:
         os.makedirs(self.cfg.checkpoint_dir, exist_ok=True)
@@ -271,8 +293,7 @@ class SeqTrainer:
                 "scheduler_state_dict": self.scheduler.state_dict(),
                 "best_val_loss": self.best_val_loss,
                 "patience_counter": self.patience_counter,
-                "train_losses": self.train_losses,
-                "val_losses": self.val_losses,
+                "loss_history": self.loss_history,
                 "config": vars(self.cfg),
             },
             path,
@@ -291,27 +312,24 @@ class SeqTrainer:
         self.epoch = ckpt["epoch"]
         self.best_val_loss = ckpt["best_val_loss"]
         self.patience_counter = ckpt["patience_counter"]
-        self.train_losses = ckpt["train_losses"]
-        self.val_losses = ckpt["val_losses"]
+        if "loss_history" in ckpt:
+            self.loss_history = ckpt["loss_history"]
+        else:
+            self.loss_history["train_total"] = ckpt.get("train_losses", [])
+            self.loss_history["val_total"] = ckpt.get("val_losses", [])
 
-    def _log_epoch(self, train_loss: float, val_loss: float) -> None:
+    def _log_epoch(self, train_metrics: dict[str, float],
+                   val_metrics: dict[str, float]) -> None:
         beta = self._get_beta()
         logger.info(
             f"Epoch {self.epoch}/{self.cfg.max_epochs} | "
-            f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | "
+            f"train={train_metrics['total']:.4f} | val={val_metrics['total']:.4f} | "
+            f"kl={train_metrics['kl']:.4f} | recon={train_metrics['recon']:.4f} | "
+            f"stop={train_metrics['stop']:.4f} | "
             f"beta={beta:.3f} | lr={self.optimizer.param_groups[0]['lr']:.2e}"
         )
         sys.stdout.flush()
         sys.stderr.flush()
-        if self.wandb_run is not None:
-            import wandb
-            wandb.log({
-                "epoch": self.epoch,
-                "train_loss": train_loss,
-                "val_loss": val_loss,
-                "beta": beta,
-                "lr": self.optimizer.param_groups[0]["lr"],
-            })
 
     def fit(self) -> None:
         logger.info(
@@ -327,21 +345,25 @@ class SeqTrainer:
         for epoch in range(start_epoch, self.cfg.max_epochs):
             self.epoch = epoch + 1
             t0 = time.time()
-            train_loss = self._train_one_epoch()
-            val_loss = self._validate()
+            train_metrics = self._train_one_epoch()
+            val_metrics = self._validate()
             epoch_time = time.time() - t0
 
-            self.train_losses.append(train_loss)
-            self.val_losses.append(val_loss)
-            self._log_epoch(train_loss, val_loss)
+            for key in ["total", "kl", "recon", "coord", "bearing",
+                        "length", "width", "ef", "stop"]:
+                self.loss_history[f"train_{key}"].append(train_metrics[key])
+                self.loss_history[f"val_{key}"].append(val_metrics[key])
+            self.loss_history["beta"].append(self._get_beta())
+            self.loss_history["lr"].append(self.optimizer.param_groups[0]["lr"])
+            self._log_epoch(train_metrics, val_metrics)
             logger.info(f"  epoch_time={epoch_time:.1f}s")
 
             self.scheduler.step()
 
             if self.epoch % self.cfg.checkpoint_every == 0:
                 self._save_checkpoint("latest")
-            if val_loss < self.best_val_loss:
-                self.best_val_loss = val_loss
+            if val_metrics["total"] < self.best_val_loss:
+                self.best_val_loss = val_metrics["total"]
                 self.patience_counter = 0
                 self._save_checkpoint("best")
             else:
@@ -369,10 +391,6 @@ class SeqTrainer:
             device=self.device,
         )
         logger.info(f"Evaluation results: {results}")
-
-        if self.wandb_run is not None:
-            import wandb
-            wandb.finish()
 
 
 def train_seq(config: SeqTrainConfig) -> SeqTrainer:

@@ -58,6 +58,3 @@ class SeqTrainConfig:
 
     # Evaluation
     n_eval_samples: int = 100
-
-    # Tracking
-    use_wandb: bool = False
