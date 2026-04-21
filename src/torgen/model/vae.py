@@ -15,13 +15,21 @@ def reparameterize(mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
 
 
 def kl_divergence(mu_q: torch.Tensor, logvar_q: torch.Tensor,
-                  mu_p: torch.Tensor, logvar_p: torch.Tensor) -> torch.Tensor:
-    """KL(q || p) for diagonal Gaussians, summed over latent dims, mean over batch."""
+                  mu_p: torch.Tensor, logvar_p: torch.Tensor,
+                  free_bits: float = 0.0) -> torch.Tensor:
+    """KL(q || p) for diagonal Gaussians, summed over latent dims, mean over batch.
+
+    Args:
+        free_bits: Minimum KL per latent dimension (nats). Prevents posterior
+            collapse by ensuring z carries at least this much information per dim.
+    """
     kl = 0.5 * (
         logvar_p - logvar_q
         + (logvar_q.exp() + (mu_q - mu_p).pow(2)) / logvar_p.exp()
         - 1.0
     )
+    if free_bits > 0.0:
+        kl = kl.clamp(min=free_bits)
     return kl.sum(dim=-1).mean()
 
 

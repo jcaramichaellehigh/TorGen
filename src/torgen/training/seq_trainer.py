@@ -196,7 +196,8 @@ class SeqTrainer:
             losses = self.loss_fn(out["preds"], tracks, track_mask)
 
             kl = kl_divergence(
-                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"]
+                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"],
+                free_bits=self.cfg.kl_free_bits,
             )
             loss = losses["total"] + beta * kl
 
@@ -264,7 +265,8 @@ class SeqTrainer:
             losses = self.loss_fn(out["preds"], tracks, track_mask)
 
             kl = kl_divergence(
-                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"]
+                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"],
+                free_bits=self.cfg.kl_free_bits,
             )
             loss = losses["total"] + beta * kl
 
@@ -391,6 +393,17 @@ class SeqTrainer:
             device=self.device,
         )
         logger.info(f"Evaluation results: {results}")
+
+        # Save training curves
+        try:
+            from torgen.viz.plots import plot_training_curves
+            fig = plot_training_curves(self.loss_history,
+                                       save_path=os.path.join(eval_dir, "training_curves.png"))
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+            logger.info(f"Training curves saved to {eval_dir}/training_curves.png")
+        except ImportError:
+            pass
 
 
 def train_seq(config: SeqTrainConfig) -> SeqTrainer:

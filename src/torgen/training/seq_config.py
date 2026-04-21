@@ -18,11 +18,12 @@ class SeqTrainConfig:
     # Training
     batch_size: int = 32
     max_epochs: int = 200
-    patience: int = 15
+    patience: int = 50
     lr: float = 1e-4
     weight_decay: float = 1e-3
     warmup_epochs: int = 5
     kl_anneal_epochs: int = 40
+    kl_free_bits: float = 0.25
     checkpoint_every: int = 10
 
     # Model architecture
@@ -45,10 +46,10 @@ class SeqTrainConfig:
     lambda_length: float = 2.0
     lambda_width: float = 2.0
     lambda_ef: float = 2.0
-    lambda_stop: float = 1.0
+    lambda_stop: float = 5.0
 
     # EF class weight power (0 = uniform, 1 = full inverse-frequency)
-    ef_weight_power: float = 0.5
+    ef_weight_power: float = 1.0
 
     # Generation
     stop_threshold: float = 0.5
