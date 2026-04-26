@@ -215,10 +215,12 @@ class Trainer:
             self.wandb_run = None
 
     def _get_beta(self) -> float:
-        """KL annealing: linear ramp 0 -> 1 over kl_anneal_epochs."""
+        """KL annealing: linear ramp 0 -> kl_weight over kl_anneal_epochs."""
+        if self.cfg.kl_weight == 0.0:
+            return 0.0
         if self.cfg.kl_anneal_epochs == 0:
-            return 1.0
-        return min(1.0, self.epoch / self.cfg.kl_anneal_epochs)
+            return self.cfg.kl_weight
+        return min(self.cfg.kl_weight, self.cfg.kl_weight * self.epoch / self.cfg.kl_anneal_epochs)
 
     def _train_one_epoch(self) -> dict[str, float]:
         self.model.train()

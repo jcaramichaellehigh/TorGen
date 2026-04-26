@@ -23,6 +23,7 @@ class TrainConfig:
     warmup_epochs: int = 5
     kl_anneal_epochs: int = 40
     kl_free_bits: float = 0.0
+    kl_weight: float = 1.0  # 0.0 to disable KL entirely (pure reconstruction)
     checkpoint_every: int = 10
 
     # Model architecture
