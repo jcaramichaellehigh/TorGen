@@ -112,6 +112,7 @@ def run_evaluation(
                 out = model.generate(wx_batch)
 
             preds = out["preds"]
+            predicted_counts = out.get("predicted_count")  # (n_chunk,) or None
             exists = preds["exists"]          # (n_chunk, Q, 1)
             coords = preds["coords"]          # (n_chunk, Q, 2)
             bearing = preds["bearing"]        # (n_chunk, Q, 1)
@@ -124,7 +125,19 @@ def run_evaluation(
             for i in range(n_chunk):
                 realization_id = chunk_start + i
                 exists_probs = exists[i].squeeze(-1)  # (Q,)
-                mask = exists_probs > threshold  # (Q,)
+
+                # Use predicted count (top-K) if available, else threshold
+                if predicted_counts is not None:
+                    k = min(predicted_counts[i].item(), exists_probs.shape[0])
+                    if k > 0:
+                        _, topk_idx = exists_probs.topk(k)
+                        mask = torch.zeros_like(exists_probs, dtype=torch.bool)
+                        mask[topk_idx] = True
+                    else:
+                        mask = torch.zeros_like(exists_probs, dtype=torch.bool)
+                else:
+                    mask = exists_probs > threshold
+
                 n_pred = mask.sum().item()
                 day_gen_counts.append(n_pred)
 

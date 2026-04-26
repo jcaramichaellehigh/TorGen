@@ -47,6 +47,7 @@ class TrainConfig:
     lambda_width: float = 2.0
     lambda_ef: float = 2.0
     lambda_exists: float = 10.0
+    lambda_count: float = 5.0
 
     # Focal loss
     focal_gamma: float = 2.0

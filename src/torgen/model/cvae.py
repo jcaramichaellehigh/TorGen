@@ -52,26 +52,37 @@ class TorGenCVAE(nn.Module):
             n_layers=n_decoder_layers, n_heads=n_heads,
             n_ef_classes=n_ef_classes, dropout=dropout,
         )
+        # Count head: weather features → predicted tornado count (log-rate for Poisson)
+        self.count_head = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.LeakyReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(d_model // 2, 1),
+        )
 
     def forward(self, wx, tracks, track_mask):
-        spatial_map, _ = self.weather_encoder(wx)
+        spatial_map, env_vector = self.weather_encoder(wx)
         compressed = self.spatial_compressor(spatial_map)
         track_summary = self.track_encoder(tracks, track_mask)
         mu_q, logvar_q = self.posterior(compressed, track_summary)
         mu_p, logvar_p = self.prior(compressed)
         z = reparameterize(mu_q, logvar_q)  # (B, d_z, 4, 4)
         preds = self.decoder(z, wx_features=spatial_map)
+        count_log_rate = self.count_head(env_vector).squeeze(-1)  # (B,)
         return {
             "preds": preds,
+            "count_log_rate": count_log_rate,
             "mu_q": mu_q.flatten(1), "logvar_q": logvar_q.flatten(1),
             "mu_p": mu_p.flatten(1), "logvar_p": logvar_p.flatten(1),
         }
 
     @torch.no_grad()
     def generate(self, wx):
-        spatial_map, _ = self.weather_encoder(wx)
+        spatial_map, env_vector = self.weather_encoder(wx)
         compressed = self.spatial_compressor(spatial_map)
         mu_p, logvar_p = self.prior(compressed)
         z = reparameterize(mu_p, logvar_p)  # (B, d_z, 4, 4)
         preds = self.decoder(z, wx_features=spatial_map)
-        return {"preds": preds}
+        count_log_rate = self.count_head(env_vector).squeeze(-1)  # (B,)
+        predicted_count = torch.round(count_log_rate.exp()).long()  # (B,)
+        return {"preds": preds, "predicted_count": predicted_count}

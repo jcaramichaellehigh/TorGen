@@ -241,7 +241,15 @@ class Trainer:
                 out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"],
                 free_bits=self.cfg.kl_free_bits,
             )
-            loss = losses["total"] + beta * kl
+
+            # Count loss: Poisson NLL
+            gt_counts = track_mask.sum(dim=1).float()  # (B,)
+            count_loss = nn.functional.poisson_nll_loss(
+                out["count_log_rate"], gt_counts,
+                log_input=True, reduction="mean",
+            )
+
+            loss = losses["total"] + beta * kl + self.cfg.lambda_count * count_loss
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -298,7 +306,14 @@ class Trainer:
                 out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"],
                 free_bits=self.cfg.kl_free_bits,
             )
-            loss = losses["total"] + beta * kl
+
+            gt_counts = track_mask.sum(dim=1).float()
+            count_loss = nn.functional.poisson_nll_loss(
+                out["count_log_rate"], gt_counts,
+                log_input=True, reduction="mean",
+            )
+
+            loss = losses["total"] + beta * kl + self.cfg.lambda_count * count_loss
 
             accum["total"] += loss.item()
             accum["kl"] += kl.item()
@@ -334,7 +349,7 @@ class Trainer:
             return
         logger.info(f"Resuming from {latest}")
         ckpt = torch.load(latest, map_location=self.device, weights_only=False)
-        self.model.load_state_dict(ckpt["model_state_dict"])
+        self.model.load_state_dict(ckpt["model_state_dict"], strict=False)
         self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
         self.epoch = ckpt["epoch"]
