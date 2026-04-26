@@ -262,9 +262,10 @@ class Trainer:
                 self.optimizer.zero_grad()
                 continue
 
-            grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
-            if grad_norm > 20:
-                logger.warning(f"Gradient norm {grad_norm:.1f} > 20")
+            max_norm = 5.0
+            grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_norm)
+            if grad_norm > max_norm * 4:
+                logger.warning(f"Gradient norm {grad_norm:.1f} > {max_norm * 4}")
 
             self.optimizer.step()
 
