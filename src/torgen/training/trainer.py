@@ -10,6 +10,7 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
@@ -62,6 +63,12 @@ class Trainer:
         self.patience_counter = 0
         self.train_losses: list[float] = []
         self.val_losses: list[float] = []
+        self.loss_history: dict[str, list[float]] = {
+            "train_total": [], "val_total": [],
+            "train_kl": [], "val_kl": [],
+            "train_recon": [], "val_recon": [],
+            "beta": [], "lr": [],
+        }
 
         # Dataloaders
         self.train_loader = self._build_dataloader("train")
@@ -202,14 +209,14 @@ class Trainer:
             return 1.0
         return min(1.0, self.epoch / self.cfg.kl_anneal_epochs)
 
-    def _train_one_epoch(self) -> float:
+    def _train_one_epoch(self) -> dict[str, float]:
         self.model.train()
-        total_loss = 0.0
+        accum = {"total": 0.0, "kl": 0.0, "recon": 0.0}
         n_batches = 0
-        n_total = len(self.train_loader)
         beta = self._get_beta()
 
-        for batch in self.train_loader:
+        pbar = tqdm(self.train_loader, desc=f"Epoch {self.epoch} train")
+        for batch in pbar:
             wx = batch["wx"].to(self.device)
             tracks = batch["tracks"].to(self.device)
             track_mask = batch["track_mask"].to(self.device)
@@ -225,7 +232,6 @@ class Trainer:
             self.optimizer.zero_grad()
             loss.backward()
 
-            # Skip update if gradients contain NaN (numerical instability)
             has_nan_grad = any(
                 torch.isnan(p.grad).any()
                 for p in self.model.parameters()
@@ -236,37 +242,37 @@ class Trainer:
                 self.optimizer.zero_grad()
                 continue
 
-            # Health check: gradient norm (clip at 1.0, standard for transformers)
             grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-            if grad_norm > 10:
-                logger.warning(f"Gradient norm {grad_norm:.1f} > 10")
+            if grad_norm > 20:
+                logger.warning(f"Gradient norm {grad_norm:.1f} > 20")
 
             self.optimizer.step()
-            total_loss += loss.item()
+
+            accum["total"] += loss.item()
+            accum["kl"] += kl.item()
+            accum["recon"] += losses["total"].item()
             n_batches += 1
 
-            if n_batches % 50 == 0 or n_batches == n_total:
-                avg = total_loss / n_batches
-                print(
-                    f"  Epoch {self.epoch} | batch {n_batches}/{n_total} | "
-                    f"avg_loss={avg:.4f}",
-                    flush=True,
-                )
+            pbar.set_postfix(
+                total=f"{accum['total']/n_batches:.2f}",
+                recon=f"{accum['recon']/n_batches:.2f}",
+                kl=f"{accum['kl']/n_batches:.2f}",
+            )
 
-            # Health check: NaN
             if not torch.isfinite(loss):
                 logger.warning("Loss is NaN/Inf — check learning rate")
 
-        return total_loss / max(n_batches, 1)
+        n = max(n_batches, 1)
+        return {k: v / n for k, v in accum.items()}
 
     @torch.no_grad()
-    def _validate(self) -> float:
+    def _validate(self) -> dict[str, float]:
         self.model.eval()
-        total_loss = 0.0
+        accum = {"total": 0.0, "kl": 0.0, "recon": 0.0}
         n_batches = 0
         beta = self._get_beta()
 
-        for batch in self.val_loader:
+        for batch in tqdm(self.val_loader, desc=f"Epoch {self.epoch} val"):
             wx = batch["wx"].to(self.device)
             tracks = batch["tracks"].to(self.device)
             track_mask = batch["track_mask"].to(self.device)
@@ -278,10 +284,14 @@ class Trainer:
                 out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"]
             )
             loss = losses["total"] + beta * kl
-            total_loss += loss.item()
+
+            accum["total"] += loss.item()
+            accum["kl"] += kl.item()
+            accum["recon"] += losses["total"].item()
             n_batches += 1
 
-        return total_loss / max(n_batches, 1)
+        n = max(n_batches, 1)
+        return {k: v / n for k, v in accum.items()}
 
     def _save_checkpoint(self, tag: str = "latest") -> None:
         os.makedirs(self.cfg.checkpoint_dir, exist_ok=True)
@@ -296,6 +306,7 @@ class Trainer:
                 "patience_counter": self.patience_counter,
                 "train_losses": self.train_losses,
                 "val_losses": self.val_losses,
+                "loss_history": self.loss_history,
                 "config": vars(self.cfg),
             },
             path,
@@ -316,12 +327,16 @@ class Trainer:
         self.patience_counter = ckpt["patience_counter"]
         self.train_losses = ckpt["train_losses"]
         self.val_losses = ckpt["val_losses"]
+        if "loss_history" in ckpt:
+            self.loss_history = ckpt["loss_history"]
 
-    def _log_epoch(self, train_loss: float, val_loss: float) -> None:
+    def _log_epoch(self, train_metrics: dict[str, float],
+                   val_metrics: dict[str, float]) -> None:
         beta = self._get_beta()
         logger.info(
             f"Epoch {self.epoch}/{self.cfg.max_epochs} | "
-            f"train_loss={train_loss:.4f} | val_loss={val_loss:.4f} | "
+            f"train={train_metrics['total']:.4f} | val={val_metrics['total']:.4f} | "
+            f"kl={train_metrics['kl']:.4f} | recon={train_metrics['recon']:.4f} | "
             f"beta={beta:.3f} | lr={self.optimizer.param_groups[0]['lr']:.2e}"
         )
         sys.stdout.flush()
@@ -330,8 +345,10 @@ class Trainer:
             import wandb
             wandb.log({
                 "epoch": self.epoch,
-                "train_loss": train_loss,
-                "val_loss": val_loss,
+                "train_loss": train_metrics["total"],
+                "val_loss": val_metrics["total"],
+                "train_kl": train_metrics["kl"],
+                "train_recon": train_metrics["recon"],
                 "beta": beta,
                 "lr": self.optimizer.param_groups[0]["lr"],
             })
@@ -351,13 +368,18 @@ class Trainer:
         for epoch in range(start_epoch, self.cfg.max_epochs):
             self.epoch = epoch + 1
             t0 = time.time()
-            train_loss = self._train_one_epoch()
-            val_loss = self._validate()
+            train_metrics = self._train_one_epoch()
+            val_metrics = self._validate()
             epoch_time = time.time() - t0
 
-            self.train_losses.append(train_loss)
-            self.val_losses.append(val_loss)
-            self._log_epoch(train_loss, val_loss)
+            self.train_losses.append(train_metrics["total"])
+            self.val_losses.append(val_metrics["total"])
+            for key in ["total", "kl", "recon"]:
+                self.loss_history[f"train_{key}"].append(train_metrics[key])
+                self.loss_history[f"val_{key}"].append(val_metrics[key])
+            self.loss_history["beta"].append(self._get_beta())
+            self.loss_history["lr"].append(self.optimizer.param_groups[0]["lr"])
+            self._log_epoch(train_metrics, val_metrics)
             logger.info(f"  epoch_time={epoch_time:.1f}s")
 
             self.scheduler.step()
@@ -365,8 +387,8 @@ class Trainer:
             # Checkpoint
             if self.epoch % self.cfg.checkpoint_every == 0:
                 self._save_checkpoint("latest")
-            if val_loss < self.best_val_loss:
-                self.best_val_loss = val_loss
+            if val_metrics["total"] < self.best_val_loss:
+                self.best_val_loss = val_metrics["total"]
                 self.patience_counter = 0
                 self._save_checkpoint("best")
             else:

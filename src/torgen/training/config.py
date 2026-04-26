@@ -59,7 +59,7 @@ class TrainConfig:
     dropout: float = 0.1
 
     # Evaluation
-    n_eval_samples: int = 100
+    n_eval_samples: int = 10
 
     # Tracking
     use_wandb: bool = False
