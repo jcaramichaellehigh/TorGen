@@ -242,12 +242,10 @@ class Trainer:
                 free_bits=self.cfg.kl_free_bits,
             )
 
-            # Count loss: Poisson NLL
+            # Count loss: L1 on predicted vs actual count
             gt_counts = track_mask.sum(dim=1).float()  # (B,)
-            count_loss = nn.functional.poisson_nll_loss(
-                out["count_log_rate"], gt_counts,
-                log_input=True, reduction="mean",
-            )
+            predicted_counts = out["count_log_rate"].exp()  # (B,)
+            count_loss = nn.functional.l1_loss(predicted_counts, gt_counts)
 
             loss = losses["total"] + beta * kl + self.cfg.lambda_count * count_loss
 
@@ -264,7 +262,7 @@ class Trainer:
                 self.optimizer.zero_grad()
                 continue
 
-            grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=5.0)
             if grad_norm > 20:
                 logger.warning(f"Gradient norm {grad_norm:.1f} > 20")
 
