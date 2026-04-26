@@ -52,9 +52,10 @@ class TorGenCVAE(nn.Module):
             n_layers=n_decoder_layers, n_heads=n_heads,
             n_ef_classes=n_ef_classes, dropout=dropout,
         )
-        # Count head: weather features → predicted tornado count (log-rate for Poisson)
+        # Count head: weather + pooled z → predicted tornado count (log-rate for Poisson)
+        z_pool_dim = d_z_channel * latent_spatial_size ** 2
         self.count_head = nn.Sequential(
-            nn.Linear(d_model, d_model // 2),
+            nn.Linear(d_model + z_pool_dim, d_model // 2),
             nn.LeakyReLU(inplace=True),
             nn.Dropout(dropout),
             nn.Linear(d_model // 2, 1),
@@ -68,7 +69,9 @@ class TorGenCVAE(nn.Module):
         mu_p, logvar_p = self.prior(compressed)
         z = reparameterize(mu_q, logvar_q)  # (B, d_z, 4, 4)
         preds = self.decoder(z, wx_features=spatial_map)
-        count_log_rate = self.count_head(env_vector).squeeze(-1)  # (B,)
+        z_pool = z.flatten(1)  # (B, d_z * H * W)
+        count_input = torch.cat([env_vector, z_pool], dim=-1)
+        count_log_rate = self.count_head(count_input).squeeze(-1)  # (B,)
         return {
             "preds": preds,
             "count_log_rate": count_log_rate,
@@ -83,6 +86,8 @@ class TorGenCVAE(nn.Module):
         mu_p, logvar_p = self.prior(compressed)
         z = reparameterize(mu_p, logvar_p)  # (B, d_z, 4, 4)
         preds = self.decoder(z, wx_features=spatial_map)
-        count_log_rate = self.count_head(env_vector).squeeze(-1)  # (B,)
+        z_pool = z.flatten(1)
+        count_input = torch.cat([env_vector, z_pool], dim=-1)
+        count_log_rate = self.count_head(count_input).squeeze(-1)  # (B,)
         predicted_count = torch.round(count_log_rate.exp()).long()  # (B,)
         return {"preds": preds, "predicted_count": predicted_count}
