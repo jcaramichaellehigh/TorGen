@@ -10,6 +10,7 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader
@@ -184,10 +185,11 @@ class SeqTrainer:
             "width": 0.0, "ef": 0.0, "stop": 0.0,
         }
         n_batches = 0
-        n_total = len(self.train_loader)
         beta = self._get_beta()
 
-        for batch in self.train_loader:
+        pbar = tqdm(self.train_loader, desc=f"Epoch {self.epoch} train",
+                    leave=False)
+        for batch in pbar:
             wx = batch["wx"].to(self.device)
             tracks = batch["tracks"].to(self.device)
             track_mask = batch["track_mask"].to(self.device)
@@ -196,8 +198,7 @@ class SeqTrainer:
             losses = self.loss_fn(out["preds"], tracks, track_mask)
 
             kl = kl_divergence(
-                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"],
-                free_bits=self.cfg.kl_free_bits,
+                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"]
             )
             loss = losses["total"] + beta * kl
 
@@ -215,8 +216,8 @@ class SeqTrainer:
                 continue
 
             grad_norm = nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
-            if grad_norm > 10:
-                logger.warning(f"Gradient norm {grad_norm:.1f} > 10")
+            if grad_norm > 20:
+                logger.warning(f"Gradient norm {grad_norm:.1f} > 20")
 
             self.optimizer.step()
 
@@ -231,13 +232,11 @@ class SeqTrainer:
             accum["stop"] += losses["stop"].item()
             n_batches += 1
 
-            if n_batches % 50 == 0 or n_batches == n_total:
-                avg = accum["total"] / n_batches
-                print(
-                    f"  Epoch {self.epoch} | batch {n_batches}/{n_total} | "
-                    f"avg_loss={avg:.4f}",
-                    flush=True,
-                )
+            pbar.set_postfix(
+                total=f"{accum['total']/n_batches:.2f}",
+                recon=f"{accum['recon']/n_batches:.2f}",
+                kl=f"{accum['kl']/n_batches:.2f}",
+            )
 
             if not torch.isfinite(loss):
                 logger.warning("Loss is NaN/Inf — check learning rate")
@@ -256,7 +255,8 @@ class SeqTrainer:
         n_batches = 0
         beta = self._get_beta()
 
-        for batch in self.val_loader:
+        for batch in tqdm(self.val_loader, desc=f"Epoch {self.epoch} val",
+                          leave=False):
             wx = batch["wx"].to(self.device)
             tracks = batch["tracks"].to(self.device)
             track_mask = batch["track_mask"].to(self.device)
@@ -265,8 +265,7 @@ class SeqTrainer:
             losses = self.loss_fn(out["preds"], tracks, track_mask)
 
             kl = kl_divergence(
-                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"],
-                free_bits=self.cfg.kl_free_bits,
+                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"]
             )
             loss = losses["total"] + beta * kl
 

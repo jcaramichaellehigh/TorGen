@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import torch
 from scipy import stats
+from tqdm import tqdm
 
 from torgen.data.dataset import TornadoDataset
 from torgen.training.config import TrainConfig
@@ -73,7 +74,7 @@ def run_evaluation(
     gt_counts: list[int] = []
     gen_counts_per_day: list[list[int]] = []
 
-    for day_idx in range(len(ds)):
+    for day_idx in tqdm(range(len(ds)), desc="Eval days"):
         sample = ds[day_idx]
         date = sample.get("date", f"day_{day_idx}")
         gt_tracks = sample["tracks"]  # (N, 6) in bearing/length format
@@ -224,7 +225,7 @@ def run_seq_evaluation(
     gt_counts: list[int] = []
     gen_counts_per_day: list[list[int]] = []
 
-    for day_idx in range(len(ds)):
+    for day_idx in tqdm(range(len(ds)), desc="Seq eval days"):
         sample = ds[day_idx]
         date = sample.get("date", f"day_{day_idx}")
         gt_tracks = sample["tracks"]
