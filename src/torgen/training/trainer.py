@@ -108,8 +108,19 @@ class Trainer:
         if src == dst:
             return
         if os.path.exists(dst) and len(os.listdir(dst)) > 0:
-            logger.info(f"Local cache already exists at {dst}, skipping copy")
-            return
+            # Verify at least one file is loadable
+            test_files = [f for f in os.listdir(dst) if f.endswith(".pt")]
+            if test_files:
+                try:
+                    torch.load(os.path.join(dst, test_files[0]), weights_only=False)
+                    logger.info(f"Local cache already exists at {dst}, skipping copy")
+                    return
+                except Exception:
+                    logger.warning(f"Corrupt local cache at {dst}, re-copying")
+                    shutil.rmtree(dst)
+            else:
+                logger.info(f"Local cache already exists at {dst}, skipping copy")
+                return
         logger.info(f"Copying data from {src} to {dst}...")
         os.makedirs(dst, exist_ok=True)
         files = [f for f in sorted(os.listdir(src)) if f.endswith((".pt", ".pt.gz"))]

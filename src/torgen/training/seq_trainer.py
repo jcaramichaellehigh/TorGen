@@ -99,8 +99,18 @@ class SeqTrainer:
         if src == dst:
             return
         if os.path.exists(dst) and len(os.listdir(dst)) > 0:
-            logger.info(f"Local cache already exists at {dst}, skipping copy")
-            return
+            test_files = [f for f in os.listdir(dst) if f.endswith(".pt")]
+            if test_files:
+                try:
+                    torch.load(os.path.join(dst, test_files[0]), weights_only=False)
+                    logger.info(f"Local cache already exists at {dst}, skipping copy")
+                    return
+                except Exception:
+                    logger.warning(f"Corrupt local cache at {dst}, re-copying")
+                    shutil.rmtree(dst)
+            else:
+                logger.info(f"Local cache already exists at {dst}, skipping copy")
+                return
         logger.info(f"Copying data from {src} to {dst}...")
         os.makedirs(dst, exist_ok=True)
         files = [f for f in sorted(os.listdir(src)) if f.endswith((".pt", ".pt.gz"))]
@@ -187,8 +197,7 @@ class SeqTrainer:
         n_batches = 0
         beta = self._get_beta()
 
-        pbar = tqdm(self.train_loader, desc=f"Epoch {self.epoch} train",
-                    leave=False)
+        pbar = tqdm(self.train_loader, desc=f"Epoch {self.epoch} train")
         for batch in pbar:
             wx = batch["wx"].to(self.device)
             tracks = batch["tracks"].to(self.device)
@@ -255,8 +264,7 @@ class SeqTrainer:
         n_batches = 0
         beta = self._get_beta()
 
-        for batch in tqdm(self.val_loader, desc=f"Epoch {self.epoch} val",
-                          leave=False):
+        for batch in tqdm(self.val_loader, desc=f"Epoch {self.epoch} val"):
             wx = batch["wx"].to(self.device)
             tracks = batch["tracks"].to(self.device)
             track_mask = batch["track_mask"].to(self.device)
