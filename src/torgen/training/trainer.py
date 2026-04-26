@@ -225,7 +225,8 @@ class Trainer:
             losses = self.loss_fn(out["preds"], tracks, track_mask)
 
             kl = kl_divergence(
-                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"]
+                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"],
+                free_bits=self.cfg.kl_free_bits,
             )
             loss = losses["total"] + beta * kl
 
@@ -281,7 +282,8 @@ class Trainer:
             losses = self.loss_fn(out["preds"], tracks, track_mask)
 
             kl = kl_divergence(
-                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"]
+                out["mu_q"], out["logvar_q"], out["mu_p"], out["logvar_p"],
+                free_bits=self.cfg.kl_free_bits,
             )
             loss = losses["total"] + beta * kl
 

@@ -20,8 +20,8 @@ def kl_divergence(mu_q: torch.Tensor, logvar_q: torch.Tensor,
     """KL(q || p) for diagonal Gaussians, summed over latent dims, mean over batch.
 
     Args:
-        free_bits: Minimum KL per latent dimension (nats). Prevents posterior
-            collapse by ensuring z carries at least this much information per dim.
+        free_bits: Minimum KL per dimension (in nats). Dimensions below this
+                   threshold contribute zero to the loss, preventing posterior collapse.
     """
     kl = 0.5 * (
         logvar_p - logvar_q
@@ -29,7 +29,7 @@ def kl_divergence(mu_q: torch.Tensor, logvar_q: torch.Tensor,
         - 1.0
     )
     if free_bits > 0.0:
-        kl = kl.clamp(min=free_bits)
+        kl = torch.clamp(kl, min=free_bits) - free_bits
     return kl.sum(dim=-1).mean()
 
 

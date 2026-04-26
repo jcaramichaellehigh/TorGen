@@ -22,6 +22,7 @@ class TrainConfig:
     weight_decay: float = 1e-3
     warmup_epochs: int = 5
     kl_anneal_epochs: int = 40
+    kl_free_bits: float = 0.0
     checkpoint_every: int = 10
 
     # Model architecture
