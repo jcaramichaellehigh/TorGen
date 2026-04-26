@@ -60,7 +60,7 @@ class TorGenCVAE(nn.Module):
         mu_q, logvar_q = self.posterior(compressed, track_summary)
         mu_p, logvar_p = self.prior(compressed)
         z = reparameterize(mu_q, logvar_q)  # (B, d_z, 4, 4)
-        preds = self.decoder(z)
+        preds = self.decoder(z, wx_features=spatial_map)
         return {
             "preds": preds,
             "mu_q": mu_q.flatten(1), "logvar_q": logvar_q.flatten(1),
@@ -73,5 +73,5 @@ class TorGenCVAE(nn.Module):
         compressed = self.spatial_compressor(spatial_map)
         mu_p, logvar_p = self.prior(compressed)
         z = reparameterize(mu_p, logvar_p)  # (B, d_z, 4, 4)
-        preds = self.decoder(z)
+        preds = self.decoder(z, wx_features=spatial_map)
         return {"preds": preds}

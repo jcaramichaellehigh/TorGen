@@ -70,21 +70,33 @@ class TrackDecoder(nn.Module):
         self.width_head = nn.Linear(d_model, 1)
         self.ef_head = nn.Linear(d_model, n_ef_classes)
 
-    def forward(self, z: torch.Tensor) -> dict[str, torch.Tensor]:
+    def forward(self, z: torch.Tensor,
+                wx_features: torch.Tensor | None = None) -> dict[str, torch.Tensor]:
         """
         Args:
-            z: (B, d_z, H, W) spatial latent map
+            z: (B, d_z, H, W) spatial latent map.
+            wx_features: (B, d_model, H', W') weather spatial features (optional).
+                         If provided, flattened and concatenated with z tokens
+                         for cross-attention, giving the decoder direct spatial
+                         grounding beyond the VAE bottleneck.
         """
         B = z.shape[0]
 
-        # Flatten spatial z to token sequence: (B, d_z, H, W) -> (B, H*W, d_z) -> (B, H*W, d_model)
+        # Flatten spatial z to token sequence
         z_flat = z.flatten(2).transpose(1, 2)  # (B, H*W, d_z)
         z_tokens = self.z_proj(z_flat) + self.z_pos  # (B, H*W, d_model)
+
+        # Concatenate weather tokens if provided
+        if wx_features is not None:
+            wx_tokens = wx_features.flatten(2).transpose(1, 2)  # (B, H'*W', d_model)
+            kv_tokens = torch.cat([z_tokens, wx_tokens], dim=1)
+        else:
+            kv_tokens = z_tokens
 
         queries = self.query_embed.weight.unsqueeze(0).expand(B, -1, -1)
 
         for layer in self.layers:
-            queries = layer(queries, z_tokens)
+            queries = layer(queries, kv_tokens)
 
         return {
             "exists": torch.sigmoid(self.exists_head(queries)),
