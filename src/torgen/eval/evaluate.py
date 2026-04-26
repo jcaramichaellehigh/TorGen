@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import torch
 from scipy import stats
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from torgen.data.dataset import TornadoDataset
 from torgen.training.config import TrainConfig
