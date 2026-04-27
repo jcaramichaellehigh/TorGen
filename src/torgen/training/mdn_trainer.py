@@ -161,9 +161,13 @@ class MDNTrainer:
 
     def _train_one_epoch(self) -> dict[str, float]:
         self.model.train()
-        accum = {"total": 0.0, "spatial": 0.0, "count": 0.0, "ef": 0.0, "kl": 0.0}
+        accum = {
+            "total": 0.0, "spatial": 0.0, "count": 0.0, "ef": 0.0, "kl": 0.0,
+            "grad_norm": 0.0, "grad_clips": 0,
+        }
         n_batches = 0
         beta = self._get_beta()
+        max_norm = 5.0
 
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.epoch} train")
         for batch in pbar:
@@ -193,12 +197,12 @@ class MDNTrainer:
                 self.optimizer.zero_grad()
                 continue
 
-            max_norm = 5.0
             grad_norm = nn.utils.clip_grad_norm_(
                 self.model.parameters(), max_norm=max_norm,
             )
-            if grad_norm > max_norm * 4:
-                logger.warning(f"Gradient norm {grad_norm:.1f} > {max_norm * 4}")
+            accum["grad_norm"] += grad_norm.item()
+            if grad_norm > max_norm:
+                accum["grad_clips"] += 1
 
             self.optimizer.step()
 
@@ -220,7 +224,14 @@ class MDNTrainer:
                 logger.warning("Loss is NaN/Inf — check learning rate")
 
         n = max(n_batches, 1)
-        return {k: v / n for k, v in accum.items()}
+        avg_grad = accum["grad_norm"] / n
+        clips = accum["grad_clips"]
+        logger.info(
+            f"  grad_norm avg={avg_grad:.1f} | "
+            f"clipped {clips}/{n_batches} batches ({100*clips/n:.0f}%)"
+        )
+        return {k: v / n for k, v in accum.items()
+                if k not in ("grad_norm", "grad_clips")}
 
     @torch.no_grad()
     def _validate(self) -> dict[str, float]:
