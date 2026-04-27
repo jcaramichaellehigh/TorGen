@@ -125,6 +125,7 @@ class MDNTrainer:
             n_components=self.cfg.n_components,
             n_ef_classes=self.cfg.n_ef_classes,
             dropout=self.cfg.dropout,
+            env_dropout=self.cfg.env_dropout,
         )
 
     def _build_scheduler(self) -> torch.optim.lr_scheduler.LRScheduler:

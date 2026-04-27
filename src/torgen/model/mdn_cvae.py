@@ -26,8 +26,10 @@ class TorGenMDN(nn.Module):
         n_components: int = 20,
         n_ef_classes: int = 6,
         dropout: float = 0.1,
+        env_dropout: float = 0.0,
     ) -> None:
         super().__init__()
+        self.env_dropout = env_dropout
         self.weather_encoder = WeatherEncoder(
             in_channels, d_model, dropout=dropout,
         )
@@ -63,6 +65,15 @@ class TorGenMDN(nn.Module):
         z = reparameterize(mu_q, logvar_q)
 
         z_pooled = z.flatten(1)
+
+        # During training, randomly drop env_vector to force z usage
+        if self.training and self.env_dropout > 0.0:
+            mask = torch.bernoulli(
+                torch.full((env_vector.shape[0], 1), 1.0 - self.env_dropout,
+                           device=env_vector.device)
+            )
+            env_vector = env_vector * mask
+
         mdn_input = torch.cat([env_vector, z_pooled], dim=-1)
         mdn_params = self.mdn(mdn_input)
 

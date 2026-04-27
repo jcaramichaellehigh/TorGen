@@ -41,6 +41,7 @@ class MDNTrainConfig:
 
     # Regularization
     dropout: float = 0.1
+    env_dropout: float = 0.0  # drop env_vector during training to force z usage
 
     # Evaluation
     n_eval_samples: int = 10
