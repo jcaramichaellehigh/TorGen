@@ -25,12 +25,10 @@ def sample_outbreak(
     L = mdn_params["L"][batch_idx]            # (K, 2, 2)
     ef_logits = mdn_params["ef_logits"][batch_idx]  # (K, n_ef)
 
-    # Expected total count
+    # Expected total count -- round to integer, no Poisson noise
+    # All stochasticity comes from z affecting pi values
     Lambda = pi.sum()
-
-    # Sample count from Poisson
-    N = torch.poisson(Lambda.unsqueeze(0)).long().item()
-    N = max(N, 0)
+    N = max(round(Lambda.item()), 0)
 
     if N == 0:
         return {
