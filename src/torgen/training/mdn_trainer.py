@@ -217,6 +217,7 @@ class MDNTrainer:
                 total=f"{accum['total']/n_batches:.2f}",
                 spatial=f"{accum['spatial']/n_batches:.2f}",
                 count=f"{accum['count']/n_batches:.2f}",
+                ef=f"{accum['ef']/n_batches:.2f}",
                 kl=f"{accum['kl']/n_batches:.2f}",
             )
 
