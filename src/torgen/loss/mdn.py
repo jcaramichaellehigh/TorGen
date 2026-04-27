@@ -48,9 +48,10 @@ class MDNLoss(nn.Module):
     components near GT locations.
     """
 
-    def __init__(self, lambda_ef: float = 1.0) -> None:
+    def __init__(self, lambda_ef: float = 1.0, lambda_count: float = 1.0) -> None:
         super().__init__()
         self.lambda_ef = lambda_ef
+        self.lambda_count = lambda_count
 
     def forward(self, mdn_params: dict[str, torch.Tensor],
                 tracks: torch.Tensor,
@@ -120,11 +121,18 @@ class MDNLoss(nn.Module):
         spatial_loss = spatial_loss / n_total
         ef_loss = ef_loss / n_total
 
-        total = count_loss + spatial_loss + self.lambda_ef * ef_loss
+        # Explicit count L1, weighted by sqrt(gt_count+1) for outbreak emphasis
+        gt_counts = track_mask.sum(dim=1).float()  # (B,)
+        count_weights = torch.sqrt(gt_counts + 1)  # (B,)
+        count_l1 = (torch.abs(Lambda - gt_counts) * count_weights).mean()
+
+        total = (count_loss + spatial_loss + self.lambda_ef * ef_loss
+                 + self.lambda_count * count_l1)
 
         return {
             "total": total,
             "spatial": spatial_loss,
             "count": count_loss,
+            "count_l1": count_l1,
             "ef": ef_loss,
         }

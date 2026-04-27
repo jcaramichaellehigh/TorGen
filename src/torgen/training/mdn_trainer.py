@@ -35,7 +35,10 @@ class MDNTrainer:
         self._prepare_data()
 
         self.model = self._build_model().to(self.device)
-        self.loss_fn = MDNLoss(lambda_ef=config.lambda_ef).to(self.device)
+        self.loss_fn = MDNLoss(
+            lambda_ef=config.lambda_ef,
+            lambda_count=config.lambda_count,
+        ).to(self.device)
         self.optimizer = AdamW(
             self.model.parameters(),
             lr=config.lr,

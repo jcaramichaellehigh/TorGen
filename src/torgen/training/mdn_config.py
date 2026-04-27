@@ -38,6 +38,7 @@ class MDNTrainConfig:
 
     # Loss
     lambda_ef: float = 1.0
+    lambda_count: float = 1.0
 
     # Regularization
     dropout: float = 0.1
